@@ -20,6 +20,14 @@
 	var T = window.epQuizI18n || {};
 	var t = function (key, fallback) { return T[key] || fallback; };
 	var fmt = function (str, value) { return String(str).replace(/%[ds]/, value); };
+	// 所要時間は移動時間からの目安でしかない（結果画面でもそう断っている）。
+	// 「約4.1時間」は人が言わないうえ、持っていない精度を主張してしまう。30分刻みで丸める
+	var roughHours = function (min) {
+		var half = Math.max(1, Math.round(min / 30));      // 30分単位
+		var h = Math.floor(half / 2);
+		if (half % 2) { return h ? fmt(t('aboutHoursHalf', '約%d時間半'), h) : t('aboutHalfHour', '約30分'); }
+		return fmt(t('aboutHours', '約%s時間'), h);
+	};
 
 	// 設問はサーバー（epQuizI18n.questions ← editplus_ai_concierge_questions()）から来る。
 	// **並びも個数もサーバーが正。**回答はインデックスで送るので、ここで写して1つでも
@@ -81,6 +89,7 @@ function mount(el, options) {
 	}
 
 	function renderQuestion() {
+		el.classList.remove('is-result');
 		var q = QUESTIONS[step];
 		var opts = q.options.map(function (label, i) {
 			var sel = answers[step] === i ? ' sel' : '';
@@ -89,7 +98,7 @@ function mount(el, options) {
 
 		el.innerHTML = '<div class="q-step">'
 			+ (step > 0 ? '<button type="button" class="q-back">' + esc(t('back', '← 戻る')) + '</button>' : '')
-			+ '<div class="q-prog">QUESTION ' + (step + 1) + ' / ' + QUESTIONS.length + '</div>'
+			+ '<div class="q-prog">' + esc(t('questionLabel', '質問')) + ' ' + (step + 1) + ' / ' + QUESTIONS.length + '</div>'
 			+ '<h3 class="q-title">' + esc(q.title) + '</h3>'
 			+ '<div class="q-opts">' + opts + '</div>'
 			+ '</div>';
@@ -120,8 +129,8 @@ function mount(el, options) {
 	}
 
 	function renderLoading() {
+		el.classList.remove('is-result');
 		el.innerHTML = '<div class="q-step">'
-			+ '<div class="q-prog">CONCIERGE</div>'
 			+ '<h3 class="q-title">' + esc(t('building', 'あなたのコースを組み立てています…')) + '</h3>'
 			+ '<div class="q-loading"><span></span><span></span><span></span></div>'
 			+ '<p class="q-note">' + esc(t('buildingNote', '京都観光コンシェルジュが厳選したスポットから、移動時間まで含めて選んでいます（10秒ほどかかることがあります）')) + '</p>'
@@ -129,8 +138,8 @@ function mount(el, options) {
 	}
 
 	function renderError(message) {
+		el.classList.remove('is-result');
 		el.innerHTML = '<div class="q-step">'
-			+ '<div class="q-prog">SORRY</div>'
 			+ '<h3 class="q-title">' + esc(message || t('failed', '診断に失敗しました。')) + '</h3>'
 			+ '<div class="q-nav"><button type="button" class="q-next" id="qRetry">' + esc(t('retry', 'もう一度試す')) + '</button></div>'
 			+ '</div>';
@@ -143,24 +152,66 @@ function mount(el, options) {
 		return m < 1000 ? m + 'm' : (Math.round(m / 100) / 10) + 'km';
 	}
 
+	// 行程のカードに写真を載せる。診断の API は写真を返さないので、WP の公開 API（スポットの一覧）から取る。
+	// 診断の組み立てには触らない。取れなかったカードは「名前の面」のまま
+	function loadPhotos(ids) {
+		if (!ids.length || !window.fetch) { return; }
+		var url = endpoint.replace('editplus/v1/concierge', 'wp/v2/spot');
+		url += (url.indexOf('?') === -1 ? '?' : '&') + 'include=' + ids.join(',') + '&per_page=' + ids.length
+			+ '&_embed=wp:featuredmedia&_fields=id,_links,_embedded';
+		fetch(url).then(function (r) { return r.ok ? r.json() : []; }).then(function (list) {
+			(list || []).forEach(function (p) {
+				var m = p._embedded && p._embedded['wp:featuredmedia'] && p._embedded['wp:featuredmedia'][0];
+				if (!m || !m.source_url) { return; }
+				var sizes = (m.media_details && m.media_details.sizes) || {};
+				var src = (sizes.medium_large || sizes.large || sizes.medium || m).source_url;
+				var card = el.querySelector('.spot[data-spot="' + p.id + '"]');
+				if (!card) { return; }
+				// 写真が載ったら見出しを見せ、フォーカス先も見出しのリンクに移す（写真のリンクは同じ行き先の重複）
+				var ph = card.querySelector('.rs-ph');
+				ph.innerHTML = '<div class="imgwrap"><img src="' + esc(src) + '" alt="" loading="lazy"></div>';
+				ph.setAttribute('tabindex', '-1');
+				ph.setAttribute('aria-hidden', 'true');
+				card.classList.remove('spot--text');
+				var h = card.querySelector('h4');
+				if (h) {
+					h.classList.remove('screen-reader-text');
+					h.querySelector('a').removeAttribute('tabindex');
+				}
+			});
+		}).catch(function () { /* 写真が無くても行程は読める */ });
+	}
+
 	function renderResult(data) {
 		// 'cache' で返ってくる場合もあるので「ai以外は編集部セレクト」で判定する。
 		// source === 'fallback' だけを見ると、キャッシュ済みのフォールバックに
 		// 「Your Route」のバッジが付き、本文の「編集部の定番スポットで組みました」と矛盾する
-		var badge = data.source === 'ai' ? 'Your Route' : 'Editors’ Pick';
+		var badge = data.source === 'ai' ? t('badgeRoute', 'コンシェルジュの提案') : t('badgePick', '編集部のおすすめ');
 		var plan = data.plan || {};
+		// 数字まわりの約物は言語で変える。日本語は「徒歩8分」「4スポット」と詰め、区切りは「・」、時間の幅は「〜」。
+		// 間に半角の空白や「–」を入れると、欧文の作法で機械が組んだ表記に見える
+		var ja = /^ja/i.test(document.documentElement.lang || '');
+		var gap = ja ? '' : ' ';
+		var dot = ja ? '・' : ' · ';
+		var dotEnd = ja ? '・' : ' ·'; // 項目の末尾に付けるとき（後ろの空白は項目の間に置く）
+		var range = ja ? '〜' : '–';
 
-		var rows = (data.spots || []).map(function (s, i) {
-			// 移動区間（出発地→1件目 も含めて必ず出す）
+		// トップページの棚と同じ組み：時刻を上に置いた、トップと同じスポットのカード（.spot）の列。
+		// 写真は後から載せる（loadPhotos）。載るまでは、トップと同じ「名前の面」で受ける
+		var ids = [];
+		var steps = (data.spots || []).map(function (s, i) {
+			if (s.id) { ids.push(parseInt(s.id, 10)); }
+			// ひとつ前の場所（1件目は出発地）からの移動。1件目も必ず出す
 			var leg = s.travel_min
-				? '<div class="ts-leg"><span>' + esc(s.travel_by || t('travel', '移動')) + ' ' + esc(fmt(t('minutes', '%d分'), s.travel_min))
-					+ (s.distance_m ? ' ・ ' + distLabel(s.distance_m) : '') + '</span></div>'
+				? '<span class="rs-leg">' + esc(s.travel_by || t('travel', '移動')) + gap + esc(fmt(t('minutes', '%d分'), s.travel_min))
+					+ (s.distance_m ? dot + distLabel(s.distance_m) : '') + '</span>'
 				: '';
-
-			var meta = [];
-			if (s.arrive) meta.push(esc(s.arrive) + '–' + esc(s.leave));
-			if (s.stay_min) meta.push(esc(fmt(t('stayMin', '滞在%d分'), s.stay_min)));
-			if (s.area) meta.push(esc(s.area));
+			// 着く時刻を大きく、出る時刻を小さく（誌面のモデルコースと同じ）。時刻が無いときだけ順番の数字
+			var when = s.arrive
+				? '<b>' + esc(s.arrive) + '</b>' + (s.leave ? '<small>' + range + esc(s.leave) + '</small>' : '')
+				: '<b>' + (i + 1) + '</b>';
+			// トップのカードと同じ「エリア｜ジャンル」の1行
+			var cat = [s.area, s.cat].filter(Boolean).map(esc).join('｜');
 
 			// 営業時間・定休日は誌面の原文をそのまま出す。
 			// 診断は日付を聞いていないので「その日開いているか」は保証できない。
@@ -169,16 +220,23 @@ function mount(el, options) {
 			if (s.hours) facts.push(esc(t('hoursLabel', '営業時間')) + ' ' + esc(s.hours));
 			if (s.holiday) facts.push(esc(t('holidayLabel', '定休日')) + ' ' + esc(s.holiday));
 
-			return leg
-				+ '<div class="ts" style="animation-delay:' + (i * 90) + 'ms">'
-				+ '<span class="ts-no">' + (i + 1) + '</span>'
-				+ '<div class="ts-b">'
-				+ '<div class="ts-meta">' + meta.join(' ・ ') + '</div>'
-				+ '<h4><a href="' + esc(s.url) + '">' + esc(s.title) + '</a></h4>'
-				+ '<p>' + esc(s.reason) + '</p>'
+			var acts = [];
+			if (s.map_url) acts.push('<a href="' + esc(s.map_url) + '" target="_blank" rel="noopener">' + esc(t('viewMap', '地図で見る')) + '</a>');
+			if (s.stay_min) acts.push('<span>' + esc(fmt(t('stayMin', '滞在%d分'), s.stay_min)) + '</span>');
+
+			return '<li class="rs-step" style="animation-delay:' + (i * 90) + 'ms">'
+				+ '<p class="rs-when">' + leg + when + '</p>'
+				+ '<article class="spot spot--text" data-spot="' + (s.id ? parseInt(s.id, 10) : '') + '">'
+				+ '<a class="rs-ph" href="' + esc(s.url) + '"><div class="noimg"><span class="noimg-name">' + esc(s.title) + '</span></div></a>'
+				+ '<div class="in">'
+				+ (cat ? '<span class="cat">' + cat + '</span>' : '')
+				// 写真が無いあいだは上の面が見出しを兼ねる（トップのカードと同じ扱い）。読み上げ用に見出しは残すが、
+				// 見えないリンクにタブが止まらないようにする（フォーカスが画面から消える）
+				+ '<h4 class="screen-reader-text"><a href="' + esc(s.url) + '" tabindex="-1">' + esc(s.title) + '</a></h4>'
+				+ '<p class="rs-reason">' + esc(s.reason) + '</p>'
 				+ (facts.length ? '<p class="ts-facts">' + facts.join('<br>') + '</p>' : '')
-				+ (s.map_url ? '<a class="ts-map" href="' + esc(s.map_url) + '" target="_blank" rel="noopener">' + esc(t('viewMap', '地図で見る')) + '</a>' : '')
-				+ '</div></div>';
+				+ (acts.length ? '<div class="actions">' + acts.join('') + '</div>' : '')
+				+ '</div></article></li>';
 		}).join('');
 
 		var stats = [];
@@ -186,9 +244,9 @@ function mount(el, options) {
 		var startLabel = plan.start_kind === 'geo' ? t('hereLabel', '現在地') : plan.start_label;
 		if (startLabel) stats.push('<span>' + esc(fmt(t('fromLabel', '%s発'), startLabel)) + '</span>');
 		if (plan.transport_label) stats.push('<span>' + esc(plan.transport_label) + '</span>');
-		if (plan.begin) stats.push('<span>' + esc(plan.begin) + '–' + esc(plan.end) + '</span>');
-		if (plan.total_min) stats.push('<span>' + esc(fmt(t('aboutHours', '約%s時間'), Math.round(plan.total_min / 60 * 10) / 10)) + '</span>');
-		stats.push('<span>' + esc(fmt(t('spotCount', '%d スポット'), (data.spots || []).length)) + '</span>');
+		if (plan.begin) stats.push('<span>' + esc(plan.begin) + range + esc(plan.end) + '</span>');
+		if (plan.total_min) stats.push('<span>' + esc(roughHours(plan.total_min)) + '</span>');
+		stats.push('<span>' + esc(fmt(t('spotCount', '%dスポット'), (data.spots || []).length)) + '</span>');
 
 		var route = plan.map_url
 			? '<a class="r-map" href="' + esc(plan.map_url) + '" target="_blank" rel="noopener">' + esc(t('openRoute', 'Googleマップでルートを開く')) + '</a>'
@@ -215,19 +273,19 @@ function mount(el, options) {
 		}
 		if (chips) { chips = '<div class="r-budget">' + chips + '</div>'; }
 
+		el.classList.add('is-result');
 		el.innerHTML = '<div class="q-res">'
 			+ '<div class="res-head">'
-			+ '<span class="res-badge">' + badge + '</span>'
-			+ '<h3 class="res-title">' + esc(data.title) + '</h3>'
+			+ '<div class="res-h"><h3 class="res-title">' + esc(data.title) + '</h3>'
+			+ '<button type="button" class="r-reset" id="qReset">' + esc(t('startOver', 'もう一度診断する')) + '</button></div>'
 			+ (data.description ? '<p class="res-desc">' + esc(data.description) + '</p>' : '')
-			+ '<div class="res-stats">' + stats.join('') + '</div>'
+			+ '<div class="res-stats">' + stats.join('') + '<span class="res-badge">' + badge + '</span></div>'
 			+ '</div>'
-			+ '<div class="res-timeline">' + rows
-			+ chips
+			+ '<ol class="rs-grid">' + steps + '</ol>'
+			+ '<div class="r-foot">' + route + chips + '</div>'
 			+ '<p class="res-note">' + esc(t('timeNote', '時刻は移動時間からの目安です。営業時間・定休日は各スポットのページと公式情報でご確認ください。')) + '</p>'
-			+ '<div class="r-actions">' + route
-			+ '<button type="button" class="r-reset" id="qReset">' + esc(t('startOver', 'もう一度診断する')) + '</button>'
-			+ '</div></div></div>';
+			+ '</div>';
+		loadPhotos(ids);
 
 		el.querySelector('#qReset').addEventListener('click', reset);
 		Array.prototype.forEach.call(el.querySelectorAll('.b-chip'), function (btn) {

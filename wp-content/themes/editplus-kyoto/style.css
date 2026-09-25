@@ -3,11 +3,24 @@ Theme Name: EditPlus Kyoto Concierge
 Theme URI: https://github.com/takumin-2525/editplus-web-renewal
 Author: 高速オフセット / 株式会社エディットプラス
 Description: 京都・大阪観光コンシェルジュ リニューアル用の自作テーマ。60_デザイン/kyoto-concierge-rough.html のデザインを再現。
-Version: 0.9.14
+Version: 0.9.22
 Requires at least: 6.0
 Requires PHP: 8.0
 Text Domain: editplus-kyoto
 */
+
+/* ============ 書体（2026-09-21） ============
+   見出し＝しっぽり明朝B1、本文・UI＝Zen Kaku Gothic New、欧文の数字・ラベル＝Cormorant Garamond。
+   Google Fonts から読む（functions.php の editplus_fonts_url()）。前は OS 標準の書体だけで、Mac・iPhone では
+   ヒラギノ、Windows では游明朝、Android では汎用の明朝と、見る端末ごとに別のサイトに見えていた。
+   ヒラギノは「どのサイトも同じ顔」なので、既視感の一因でもあった。
+   ・全角「！」だけは別のフォント（EP Yakumono）で描く。B1 の全角「！」は築地体ゆずりの斜めの画で「／」に読める。
+     B1 自身の半角「!」（こちらは直立）を全角幅に置き直した1文字だけのフォントを unicode-range で当てている。
+     範囲を1文字に絞っているので、ほかの文字にも行の高さにも影響しない（実測）→ assets/fonts/README.md
+   ・中国語・韓国語の面では和文の Web フォントを使わない（:root の下の html[lang^="zh"] ほか）。
+     日本の字形と、簡体・繁体・ハングルが1行の中で混ざって見えるため。前と同じ OS 標準の書体で組む */
+@font-face{font-family:"EP Yakumono";src:url(assets/fonts/ep-yakumono-500.woff) format("woff");font-weight:100 500;font-display:block;unicode-range:U+FF01}
+@font-face{font-family:"EP Yakumono";src:url(assets/fonts/ep-yakumono-600.woff) format("woff");font-weight:600 900;font-display:block;unicode-range:U+FF01}
 
 /* ============ design tokens（rough.html 由来） ============ */
 :root{
@@ -22,10 +35,20 @@ Text Domain: editplus-kyoto
                   → #666b63(和紙4.77 / 白5.46)。soft より淡いので段差は残る
      --sumi-mute  「押せない」ことを示すための薄さ。無効な部品は基準の対象外なので旧色のまま */
   --line:#dde1da; --rule:#d4d4cb; --indigo:#33436a; --indigo-soft:#5c6a94; --gold:#9a8348; --gold-ink:#7d6a3a;
+  --mincho:"EP Yakumono","Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",YuMincho,"Songti SC",serif;
+  --gothic:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic Medium","Noto Sans JP",system-ui,sans-serif;
+  --serif:"Cormorant Garamond","Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  /* 字間は5段だけ（2026-09-21）。98箇所・21種類の letter-spacing が散っていて、どこを見ても
+     同じ「字間を広げた組み」に見えるのが既視感の芯だった。大きい字ほど詰める（光学的補正）。
+     段を足したくなったら、まず既存の段で足りない理由を書くこと
+     → 60_デザイン/2026-09-16_おすすめ情報のデザイン監査.md の「共通の作法」7 */
+  --tr-display:.02em; --tr-head:.04em; --tr-body:.06em; --tr-meta:.1em; --tr-label:.2em;
+}
+/* 中国語・韓国語は前と同じ OS 標準の書体（理由は上の「書体」）。functions.php は Web フォントの読み込み自体を省く */
+html[lang^="zh"],html[lang^="ko"]{
   --mincho:"Hiragino Mincho ProN","Yu Mincho",YuMincho,"Songti SC",serif;
   --gothic:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic Medium","Noto Sans JP",system-ui,sans-serif;
   --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
-  --mono:ui-monospace,"SF Mono",Menlo,monospace;
 }
 /* ダークモードは出さない（2026-09-11 定例で廃止に合意。端末の設定に関わらず和紙の地で見せる） */
 
@@ -38,6 +61,14 @@ html,body{overflow-x:clip} /* iOSのSafariは html だけだと横に動くこ�
 .wrap{max-width:1200px;margin:0 auto;padding:0 30px}
 a{color:inherit;text-decoration:none}
 img{display:block;max-width:100%}
+/* 見出しの改行位置（2026-09-21）。スマホで「どう巡 / る？」「月あか / り」のように、最後の行に1〜2文字だけ
+   落ちていた（書体を変える前から同じ。和文は1文字ずつ折れるので、行末の1文字で決まってしまう）。
+   Chrome 系は文節で折り（auto-phrase）、行の長さも揃える。iPhone（どのブラウザも WebKit）には auto-phrase が無いので、
+   最後の行を短くしない pretty にする。keep-all は使わない：長い語を非常手段で折るときに禁則を守らず、
+   「（」が行末に残ることがある（WebKit で実測）。line-break:strict は「ー」や小さい仮名で行を始めないため
+   （WebKit の pretty が「コ / ース」と折った）→ 60_デザイン/デザイン方針・ラフ案.md「タイポグラフィ」 */
+:lang(ja):is(h1,h2,h3,h4,.noimg-name,.r-map){text-wrap:pretty;line-break:strict}
+@supports (word-break:auto-phrase){:lang(ja):is(h1,h2,h3,h4,.noimg-name,.r-map){word-break:auto-phrase;text-wrap:balance}}
 .imgwrap{overflow:hidden;position:relative}
 .imgwrap img{width:100%;height:100%;object-fit:cover;transition:transform .8s cubic-bezier(.2,.7,.2,1)}
 a:hover .imgwrap img{transform:scale(1.06)}
@@ -62,7 +93,7 @@ a:hover .imgwrap img{transform:scale(1.06)}
 html[lang^="en"] .brand .en{display:none} /* 英語では上の行と同じ文言の重複になる（PC・スマホとも） */
 @media (min-width:841px){
   html[lang^="en"] .brand .jp,html[lang^="es"] .brand .jp{font-size:16px;letter-spacing:.05em}
-  html[lang^="en"] nav.main,html[lang^="es"] nav.main{gap:20px;letter-spacing:.02em}
+  html[lang^="en"] nav.main,html[lang^="es"] nav.main{gap:20px;letter-spacing:var(--tr-display)}
 }
 /* スマホでも同じ理由で、スペイン語のサイト名（30字）が地球アイコンに食い込んでいた。字を落として1行に収める */
 @media (max-width:840px){
@@ -73,7 +104,7 @@ html[lang^="en"] .brand .en{display:none} /* 英語では上の行と同じ文�
    区切り線は入れない（2026-09-17）。線を1本引くほど別扱いにする価値が無く、
    言語の地球・ハンバーガーと縦線が近くで3つ並んで、ヘッダーが騒がしくなるだけだった。
    flex:1 と min-width:0 は、1行に入らないことを app.js が scrollWidth で測れるようにするため */
-nav.main{display:flex;align-items:center;gap:24px;font-size:13.5px;letter-spacing:.05em;flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap}
+nav.main{display:flex;align-items:center;gap:24px;font-size:14px;letter-spacing:var(--tr-head);flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap}
 nav.main a{opacity:.82;transition:opacity .2s}
 /* 1行に入らない幅（言語・トップに出ている枠の数で変わる）では、セクションは引き出しに任せて ≡ を出す。
    付け外しは app.js。幅の決め打ち（@media）にしないのは、スペイン語で枠が多い日と日本語とで200px以上違うから */
@@ -84,12 +115,12 @@ nav.main a:hover{opacity:1}
 /* 言語スイッチャー（今いる言語だけを出し、押すと候補が開く）
    閉じたときの色はヘッダー依存（ヒーロー上は白、solidでは墨）。
    開いたパネルは背景を持つので、そこだけ色を明示して固定する */
-.lang{position:relative;font-family:var(--mono)}
+.lang{position:relative;font-family:var(--gothic)}
 /* 枠のピルはやめ、地球の線画＋コード。ハンバーガーの線と同じ細さで並ぶ */
 .lang>summary{display:inline-flex;align-items:center;gap:8px;cursor:pointer;list-style:none;
   padding:6px 2px;opacity:.85;transition:opacity .2s}
 /* 表示はその言語の自称（日本語／English…）。コード（JA）は旅行者に通じにくいのでやめた */
-.lang>summary .name{font-family:var(--gothic);font-size:13px;letter-spacing:.04em}
+.lang>summary .name{font-family:var(--gothic);font-size:13px;letter-spacing:var(--tr-head)}
 .globe{flex:none;display:block}
 .lang>summary::-webkit-details-marker{display:none}
 .lang>summary:hover,.lang[open]>summary{opacity:1}
@@ -118,20 +149,22 @@ nav.main a:hover{opacity:1}
     linear-gradient(0deg,rgba(7,10,18,.88) 0%,rgba(7,10,18,.32) 40%,rgba(7,10,18,0) 70%),
     linear-gradient(90deg,rgba(24,30,56,.34),rgba(24,30,56,0) 58%)}
 .hero .inner{position:relative;z-index:2;width:100%;padding-bottom:74px}
-.eyebrow{font-family:var(--serif);font-size:11px;letter-spacing:.42em;text-transform:uppercase;opacity:.85;margin:0 0 18px}
-.htitle{font-family:var(--mincho);font-weight:600;font-size:clamp(40px,6.2vw,76px);letter-spacing:.08em;
+/* .eyebrow は廃止（2026-09-21）。唯一の使用箇所だったQR帯の英字ラベルを外したので規則ごと削除 */
+.htitle{font-family:var(--mincho);font-weight:500;font-size:clamp(40px,6.2vw,76px);letter-spacing:var(--tr-display);
   margin:0;line-height:1.24;text-shadow:0 2px 30px rgba(0,0,0,.4)}
 /* 見出し下の説明。英字の飾り文（大文字・字間広め）から、読める日本語の1文に変えた。
    ゴシック・字間控えめ・行間広めで、見出しの明朝と役割を分ける */
-.hsub{font-family:var(--gothic);font-size:clamp(14px,1.45vw,16px);letter-spacing:.06em;line-height:1.9;opacity:.92;
+.hsub{font-family:var(--gothic);font-size:clamp(14px,1.45vw,16px);letter-spacing:var(--tr-body);line-height:1.9;opacity:.92;
   max-width:36em;margin:22px 0 0}
 /* クラス名は hero-search にする（.search だとWPが検索ページのbodyに付ける
    汎用クラス "search" と衝突してレイアウトが崩壊する） */
 .hero-search{margin-top:38px;display:flex;max-width:560px;background:rgba(255,255,255,.96);border-radius:2px;
   box-shadow:0 24px 60px -26px rgba(0,0,0,.7)}
-.hero-search input{flex:1;min-width:0;border:0;background:transparent;color:#191b18;font-family:var(--gothic);font-size:14.5px;padding:16px 20px;outline:none}
+.hero-search input{flex:1;min-width:0;border:0;background:transparent;color:#191b18;font-family:var(--gothic);font-size:15px;padding:16px 20px;outline:none}
 .hero-search input::placeholder{color:var(--sumi-faint)}
-.hero-search button{border:0;background:var(--indigo);color:#fff;font-family:var(--mincho);letter-spacing:.2em;font-size:14px;padding:0 30px;cursor:pointer}
+/* outline:none のままだと、キーボードで辿ったとき検索欄だけ現在地が見えない（実測：12箇所中ここだけ） */
+.hero-search:focus-within{box-shadow:0 0 0 2px var(--indigo),0 24px 60px -26px rgba(0,0,0,.7)}
+.hero-search button{border:0;background:var(--indigo);color:#fff;font-family:var(--mincho);letter-spacing:var(--tr-label);font-size:14px;padding:0 30px;cursor:pointer}
 
 /* ============ sections ============ */
 /* セクションの上下。88px（＝欄と欄のあいだ176px）は空きすぎだったので半分にした（2026-09-16 の依頼）。
@@ -139,19 +172,26 @@ nav.main a:hover{opacity:1}
    「中身が途切れているのか、次の欄が始まったのか」が読めなくなる */
 section{padding:46px 0}
 .shead{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:14px;gap:20px}
-.shead .ttl{font-family:var(--mincho);font-size:clamp(23px,3vw,32px);letter-spacing:.1em;font-weight:600;margin:0}
-.shead .more{font-size:12.5px;color:var(--sumi-soft);letter-spacing:.06em;white-space:nowrap}
+/* アイブロウを外したぶん、欄の頭は見出し1本で立たせる。最大32pxでは本文との落差が小さく、
+   どの欄も同じ重さに見えていた。太らせずに級数で差をつける（600だと大きい級数で野暮ったい） */
+.shead .ttl{font-family:var(--mincho);font-size:clamp(28px,3.9vw,46px);letter-spacing:var(--tr-head);font-weight:500;margin:0;line-height:1.32}
+.shead .more{font-size:13px;color:var(--sumi-soft);letter-spacing:var(--tr-body);white-space:nowrap}
 .rule{height:1px;background:var(--line);margin:22px 0 36px}
 /* 欄と欄のあいだに横線は引かない（2026-09-16）。一度は欄の頭に1本入れたが、
    カード1枚ずつに枠が戻って境目が読めるようになり、線が重複して見えるのでやめた。
    .top-sec は「トップの通常欄」の目印として残してある（欄をまたいで当てるときの掛かり）
    → 60_デザイン/2026-09-16_欄の区切りをどう見せるか.md */
-.kicker{font-family:var(--serif);font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--gold-ink);display:inline-block}
+/* 見出しの上に欧文の小ラベルを置く「アイブロウ」は装置として廃止（2026-09-21）。
+   トップだけで10回、サイト全体で26回、同じものが同じ位置に出ていた。
+   「英字の小さな大文字は装飾としては綺麗だが、初見の旅行者には情報にならない」
+   （2026-09-15・野口指摘）はヒーローだけの話ではない。残すのはタグ名など“中身”が入る箇所だけ
+   なので、日本語が入っても壊れない組みにする（等幅欧文・全大文字をやめる） */
+.kicker{font-family:var(--gothic);font-size:12px;letter-spacing:var(--tr-meta);color:var(--sumi-soft);display:inline-block}
 
 /* browse: エリア×ジャンル */
 .axes{display:grid;grid-template-columns:1fr 1fr;gap:26px}
 .axis{background:var(--panel);border:1px solid var(--line);padding:28px}
-.axis h3{font-family:var(--mincho);font-size:19px;letter-spacing:.1em;margin:6px 0 18px;font-weight:600}
+.axis h3{font-family:var(--mincho);font-size:19px;letter-spacing:var(--tr-meta);margin:6px 0 18px;font-weight:600}
 .chips{display:flex;flex-wrap:wrap;gap:9px}
 .chip{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:7px 16px;font-size:13px;color:var(--sumi-soft);transition:.2s;display:inline-block}
 .chip:hover{border-color:var(--indigo);color:var(--sumi)}
@@ -159,69 +199,77 @@ section{padding:46px 0}
 /* quiz: AIコンシェルジュ診断（rough.html の .quiz-sec 移植） */
 .quiz-sec{background:var(--panel);border-top:1px solid var(--rule);border-bottom:1px solid var(--rule)}
 .quiz-inner{text-align:center}
-.q-eyebrow{font-family:var(--serif);font-size:12px;letter-spacing:.4em;text-transform:uppercase;color:var(--gold)}
-.q-head{font-family:var(--mincho);font-size:clamp(27px,4vw,42px);letter-spacing:.08em;color:var(--sumi);margin:14px 0 14px;font-weight:600;line-height:1.35}
+/* .q-eyebrow は廃止（2026-09-21）。.kicker と同じ装置が別名で1つだけ生き残っていた */
+.q-head{font-family:var(--mincho);font-size:clamp(27px,4vw,42px);letter-spacing:var(--tr-meta);color:var(--sumi);margin:14px 0 14px;font-weight:600;line-height:1.35}
 .q-sub{color:var(--sumi-soft);font-size:15px;margin:0 auto 42px;max-width:46ch}
 .quiz{max-width:720px;margin:0 auto;text-align:center;min-height:340px;display:flex;flex-direction:column;justify-content:center}
 .q-step{animation:fadeup .35s ease both}
-.q-prog{font-family:var(--mono);font-size:11px;letter-spacing:.24em;color:var(--gold);margin-bottom:18px}
-.q-title{font-family:var(--mincho);font-size:clamp(21px,2.8vw,28px);letter-spacing:.06em;margin:0 0 28px;font-weight:600;color:var(--sumi)}
+/* 金 #9a8348 は --panel の上で 3.45:1 しかなく AA（4.5:1）を満たさない。読ませる文字なので gold-ink へ */
+.q-prog{font-family:var(--gothic);font-size:12px;letter-spacing:var(--tr-meta);color:var(--gold-ink);margin-bottom:18px}
+.q-title{font-family:var(--mincho);font-size:clamp(21px,2.8vw,28px);letter-spacing:var(--tr-body);margin:0 0 28px;font-weight:600;color:var(--sumi)}
 .q-opts{display:flex;flex-wrap:wrap;gap:12px;justify-content:center}
-.q-opt{border:1px solid var(--line);background:var(--card);border-radius:2px;padding:15px 28px;font-family:var(--gothic);font-size:15px;color:var(--sumi);cursor:pointer;transition:.2s;letter-spacing:.04em}
+.q-opt{border:1px solid var(--line);background:var(--card);border-radius:2px;padding:15px 28px;font-family:var(--gothic);font-size:15px;color:var(--sumi);cursor:pointer;transition:.2s;letter-spacing:var(--tr-head)}
 .q-opt:hover{border-color:var(--indigo)}
 .q-opt.sel{border-color:var(--indigo);background:var(--indigo);color:#fff}
 .q-nav{display:flex;align-items:center;justify-content:center;gap:24px;margin-top:34px}
-.q-next{border:0;background:var(--indigo);color:#fff;font-family:var(--mincho);letter-spacing:.16em;font-size:14px;padding:14px 36px;cursor:pointer}
-.q-back{background:none;border:0;color:var(--sumi-faint);font-size:12.5px;cursor:pointer;display:inline-block;margin-bottom:20px;letter-spacing:.04em}
+.q-next{border:0;background:var(--indigo);color:#fff;font-family:var(--mincho);letter-spacing:var(--tr-label);font-size:14px;padding:14px 36px;cursor:pointer}
+.q-back{background:none;border:0;color:var(--sumi-faint);font-size:13px;cursor:pointer;display:inline-block;margin-bottom:20px;letter-spacing:var(--tr-head)}
 .q-back:hover{color:var(--sumi)}
-.q-note{color:var(--sumi-faint);font-size:12.5px;margin-top:20px}
+.q-note{color:var(--sumi-faint);font-size:13px;margin-top:20px}
 .q-loading{display:flex;gap:8px;justify-content:center;margin-top:10px}
 .q-loading span{width:8px;height:8px;border-radius:50%;background:var(--indigo);animation:qdot 1.2s infinite ease-in-out}
 .q-loading span:nth-child(2){animation-delay:.15s}
 .q-loading span:nth-child(3){animation-delay:.3s}
 @keyframes qdot{0%,80%,100%{opacity:.25;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
-/* 診断結果 */
-.q-res{max-width:600px;margin:0 auto;text-align:left;animation:fadeup .5s ease both;box-shadow:0 34px 80px -34px rgba(0,0,0,.6);border-radius:4px}
-.res-head{background:linear-gradient(135deg,var(--indigo),#232b48);color:#fff;padding:36px 34px 30px;border-radius:4px 4px 0 0;text-align:center}
-.res-badge{display:inline-block;font-family:var(--serif);font-size:11px;letter-spacing:.34em;text-transform:uppercase;color:var(--gold);border:1px solid rgba(255,255,255,.32);padding:5px 15px;border-radius:999px;margin-bottom:18px}
-.res-title{font-family:var(--mincho);font-size:clamp(25px,3.8vw,36px);letter-spacing:.06em;margin:0 0 20px;font-weight:600;color:#fff;line-height:1.4}
-.res-stats{display:flex;gap:24px;justify-content:center;flex-wrap:wrap;font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;color:rgba(255,255,255,.82)}
-.res-timeline{background:var(--card);border:1px solid var(--line);border-top:0;padding:14px 34px 24px;border-radius:0 0 4px 4px}
-.ts{display:flex;gap:20px;padding:15px 0;position:relative;animation:tsin .5s ease both}
-.ts:not(:last-child)::before{content:"";position:absolute;left:15px;top:46px;bottom:-15px;width:1px;background:var(--line)}
-.ts-no{flex:none;width:31px;height:31px;border-radius:50%;background:var(--washi);border:1px solid var(--gold);color:var(--gold);font-family:var(--serif);font-size:13px;display:grid;place-items:center;position:relative;z-index:2}
-.ts-b h4{font-family:var(--mincho);font-size:18px;letter-spacing:.04em;margin:3px 0 3px;font-weight:600}
-.ts-b h4 a:hover{color:var(--indigo)}
-.ts-b p{margin:0;font-size:13px;color:var(--sumi-soft)}
-@keyframes tsin{from{opacity:0;transform:translateX(-8px)}to{opacity:1;transform:none}}
-@keyframes fadeup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
-.r-actions{display:flex;gap:20px;align-items:center;justify-content:center;margin-top:30px;flex-wrap:wrap}
-.r-reset{background:none;border:0;color:var(--sumi-soft);font-size:13px;cursor:pointer;text-decoration:underline;text-underline-offset:4px}
-
-/* コースの時間割・地図導線（クイズ結果） */
-.res-desc{margin:0 0 18px;font-size:14px;color:rgba(255,255,255,.86);line-height:1.7}
-/* 到着-出発の時刻。等幅にして縦のリズムを揃える */
-.ts-meta{font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--gold)}
-/* 移動区間。タイムラインの縦線と重なる位置に置く */
-.ts-leg{padding:2px 0 2px 51px;font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--sumi-faint)}
-.ts-leg span{position:relative;padding-left:16px}
-.ts-leg span::before{content:"";position:absolute;left:0;top:50%;width:9px;height:1px;background:var(--line)}
+/* 診断結果（2026-09-22 組み直し）
+   狭い白い箱に小さな字を詰めた「アプリの部品」で、色を合わせてもトップページの一部に見えなかった。
+   ほかの棚（特集・編集部が、通う店。）と同じ組みにする：左寄せの大きな見出し＋右に小さな導線、
+   その下にトップと同じスポットのカード（.spot）を並べ、カードの上の着く時刻で時刻表として読ませる。
+   写真は quiz.js が WP の公開 API から後で載せる（診断の API は写真を返さない）
+   → 60_デザイン/デザイン方針・ラフ案.md「診断結果」 */
+.quiz.is-result{max-width:none;min-height:0;display:block;text-align:left}
+.q-res{margin-top:36px;padding-top:34px;border-top:1px solid var(--rule);animation:fadeup .5s ease both}
+.res-head{margin-bottom:30px}
+.res-h{display:flex;align-items:baseline;justify-content:space-between;gap:20px}
+.res-title{font-family:var(--mincho);font-size:clamp(28px,3.9vw,46px);letter-spacing:var(--tr-head);font-weight:500;margin:0;line-height:1.32;color:var(--sumi)}
+.r-reset{flex:none;background:none;border:0;padding:0;color:var(--sumi-soft);font-size:13px;letter-spacing:var(--tr-body);cursor:pointer;white-space:nowrap}
+.r-reset:hover{color:var(--sumi);text-decoration:underline;text-underline-offset:4px}
+.res-desc{margin:12px 0 0;font-size:14px;line-height:1.8;color:var(--sumi-soft)}
+.res-stats{display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px;margin-top:12px;font-family:var(--gothic);font-size:13px;letter-spacing:var(--tr-display);color:var(--sumi-faint)}
+/* 出どころ（AI の提案か、編集部のセレクトか）。トップのカードの札と同じ小ささで */
+.res-badge{font-size:12px;letter-spacing:var(--tr-meta);color:var(--sumi-soft);border:1px solid var(--line);background:var(--card);padding:3px 10px}
+/* 行程：置き場所（トップ・ホテル・現在地）の幅に合わせて列の数が変わる */
+.rs-grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:34px 26px}
+.rs-step{display:flex;flex-direction:column;min-width:0;animation:fadeup .5s ease both}
+.rs-step .spot{flex:1}
+.rs-when{margin:0 0 10px;display:flex;flex-wrap:wrap;align-items:baseline;gap:0 4px;line-height:1.2}
+.rs-when b{font-family:var(--serif);font-size:24px;font-weight:600;letter-spacing:var(--tr-display);color:var(--sumi);font-variant-numeric:lining-nums}
+.rs-when small{font-family:var(--gothic);font-size:12px;color:var(--sumi-faint)}
+/* ひとつ前の場所（1件目は出発地）からの移動。時刻の上に小さく */
+.rs-leg{flex-basis:100%;margin-bottom:6px;padding-left:16px;position:relative;font-family:var(--gothic);font-size:12px;letter-spacing:var(--tr-display);color:var(--sumi-faint)}
+.rs-leg::before{content:"";position:absolute;left:0;top:50%;width:10px;height:1px;background:var(--rule)}
+.rs-ph{display:block}
+.rs-step h4{font-family:var(--mincho);font-size:18px;letter-spacing:var(--tr-head);margin:9px 0 10px;font-weight:600;line-height:1.5}
+.rs-step h4 a:hover{color:var(--indigo)}
+.rs-reason{margin:0;font-size:13px;line-height:1.8;color:var(--sumi-soft)}
 /* 営業時間・定休日（誌面の原文）。選定理由より一段落として、事実だと分かる見え方にする */
-.ts-facts{margin:6px 0 0;font-size:12px;line-height:1.7;color:var(--sumi-faint);letter-spacing:.02em}
-.ts-map{display:inline-block;margin-top:6px;font-size:12px;color:var(--indigo);letter-spacing:.04em;
-  text-decoration:underline;text-underline-offset:3px}
-/* 予算の調整チップ。結果を見てから押す位置＝タイムラインの直後に置く */
-.r-budget{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:26px}
-.b-chip{background:none;border:1px solid var(--line);color:var(--sumi-soft);font-size:12.5px;letter-spacing:.06em;
+.ts-facts{margin:10px 0 0;font-size:12px;line-height:1.7;color:var(--sumi-faint);letter-spacing:var(--tr-display)}
+@keyframes fadeup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+/* ルートを開く・予算の調整は、カードの列の下に、トップの「記事を読む」と同じ左寄せで */
+.r-foot{display:flex;flex-wrap:wrap;align-items:center;gap:14px 20px;margin-top:34px}
+.r-budget{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.b-chip{background:none;border:1px solid var(--line);color:var(--sumi-soft);font-size:13px;letter-spacing:var(--tr-body);
   padding:9px 18px;border-radius:2px;cursor:pointer;transition:.2s}
 .b-chip:hover{border-color:var(--indigo);color:var(--indigo)}
-.b-note{font-size:11.5px;color:var(--sumi-faint);letter-spacing:.02em}
+.b-note{font-size:12px;color:var(--sumi-faint);letter-spacing:var(--tr-display)}
 /* 「時刻は目安」の注意書き。読み飛ばせるが、探せば必ず見つかる位置に置く */
-.res-note{margin:22px 0 0;padding-left:51px;font-size:11.5px;line-height:1.8;color:var(--sumi-faint)}
-@media(max-width:600px){.res-note{padding-left:0}}
-.r-map{background:var(--indigo);color:#fff;font-family:var(--mincho);letter-spacing:.14em;font-size:13.5px;
-  padding:13px 30px;border-radius:2px;transition:.2s}
-.r-map:hover{background:var(--sumi)}
+.res-note{margin:16px 0 0;font-size:12px;line-height:1.8;color:var(--sumi-faint)}
+.r-map{background:none;border:1px solid var(--sumi);color:var(--sumi);font-family:var(--mincho);letter-spacing:var(--tr-meta);font-size:14px;
+  padding:13px 30px;transition:.2s}
+/* スマホでは1文字だけ次の行に落ちていた（390px で「Googleマップでルートを開 / く」。1行に要る幅 270px に対して 260px）。
+   字間と左右の余白を詰めて 228px（枠線込み）にし、360px 以上の端末では1行に収める。それより狭いと句の切れ目で折れる */
+@media(max-width:600px){.r-map{letter-spacing:var(--tr-head);padding:13px 15px}.res-h{flex-direction:column;align-items:flex-start;gap:10px}.rs-grid{gap:30px}}
+.r-map:hover{background:var(--sumi);color:var(--washi)}
 
 /* feature: 特集
    おすすめ情報と同じく、箱（白地＋枠線）は使わない（2026-09-16 監査 → 案A）。
@@ -233,9 +281,9 @@ section{padding:46px 0}
 .feature .imgwrap img{transition:transform 1s cubic-bezier(.16,1,.3,1)}
 .feature:hover .imgwrap img{transform:scale(1.04)}
 .feature .body{padding:0;display:flex;flex-direction:column;align-items:flex-start}
-.feature h3{font-family:var(--mincho);font-size:clamp(25px,3.2vw,36px);letter-spacing:.07em;line-height:1.5;margin:14px 0 18px;font-weight:600}
-.feature p{color:var(--sumi-soft);font-size:14.5px;margin:0 0 22px;max-width:44ch}
-.byline{font-size:12px;color:var(--sumi-faint);letter-spacing:.04em}
+.feature h3{font-family:var(--mincho);font-size:clamp(25px,3.2vw,36px);letter-spacing:var(--tr-body);line-height:1.5;margin:14px 0 18px;font-weight:600}
+.feature p{color:var(--sumi-soft);font-size:15px;margin:0 0 22px;max-width:44ch}
+.byline{font-size:12px;color:var(--sumi-faint);letter-spacing:var(--tr-head)}
 .feature .btn{margin-top:24px}
 
 /* editors strip: 編集部が通う店（rough.html の .strip/.tcard 移植） */
@@ -247,7 +295,7 @@ section{padding:46px 0}
 .tcard{scroll-snap-align:start}
 .tcard .imgwrap{aspect-ratio:4/5}
 .noimg--tall{aspect-ratio:4/5}
-.tcard h4{font-family:var(--mincho);font-size:16px;letter-spacing:.06em;margin:16px 0 4px;font-weight:600}
+.tcard h3{font-family:var(--mincho);font-size:16px;letter-spacing:var(--tr-body);margin:16px 0 4px;font-weight:600}
 .tcard .meta{font-size:12px;color:var(--sumi-faint)}
 
 /* spot cards */
@@ -256,15 +304,27 @@ section{padding:46px 0}
    スマホでページ全体が横にスクロールした（スポット詳細の回遊カードで実害）。列は必ず枠に収める */
 .grid>*{min-width:0}
 .spot{background:var(--card);border:1px solid var(--line);display:flex;flex-direction:column}
+/* 写真の代わりに文字の面が入るので、下の本文との間は写真ありと同じでよい */
+.spot--text .in{padding-top:20px}
 .spot .imgwrap{aspect-ratio:3/2}
 .spot .in{padding:20px 22px 22px;display:flex;flex-direction:column;flex:1}
+/* 写真が無い回。罫1本まで潰していたが（2026-09-21 昼）、実データで崩れた:
+   写真ありのカードが383px・無しが143pxで、同じ行に240pxの穴が空く。
+   staging は全件が写真無しで高さが揃っていたため、そこでは見えなかった不具合。
+   → 写真と同じ 3:2 の面で受けて高さを揃える。ただし「NO IMAGE」とは書かず、
+   その場所の名前を置く（card-spot.php が入れる）。面は和紙、下に罫1本だけ。 */
 .noimg{display:grid;place-items:center;width:100%;aspect-ratio:3/2;background:var(--panel);
-  color:var(--sumi-faint);font-family:var(--serif);font-size:11px;letter-spacing:.3em;text-transform:uppercase}
-.cat{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;color:var(--indigo-soft);text-transform:uppercase}
+  border-bottom:1px solid var(--rule);padding:18px 22px;font-size:0}
+.noimg-name{font-family:var(--mincho);font-size:clamp(15px,1.5vw,19px);letter-spacing:var(--tr-head);
+  line-height:1.5;font-weight:500;color:var(--sumi-soft);text-align:center;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+/* 中身は「四条烏丸｜ラーメン」のような日本語。等幅欧文＋全大文字だと字間が不揃いになる。
+   2026-09-16 の監査でトップのPR欄について指摘したのと同じ不具合が、カード全体にあった */
+.cat{font-family:var(--gothic);font-size:12px;letter-spacing:var(--tr-meta);color:var(--sumi-soft)}
 /* 20px だと2行に折り返した見出しがカードの中で重く、写真と張り合っていた。
    1級落として、写真 → 見出し → 補助情報の順に目が動くようにする（2026-09-17） */
-.spot h4{font-family:var(--mincho);font-size:18px;letter-spacing:.05em;margin:9px 0 10px;font-weight:600}
-.spot h4 a:hover{color:var(--indigo)}
+.spot h3{font-family:var(--mincho);font-size:18px;letter-spacing:var(--tr-head);margin:9px 0 10px;font-weight:600}
+.spot h3 a:hover{color:var(--indigo)}
 /* 抜粋（.desc）は出さなくなった（2026-09-17）。京都系6サイトの実測では、見出しの下に
    説明文を置いているのは1件だけで、そこも色は見出しと同じ黒だった。灰色3行は見出しと
    張り合って読む順序が消える → 60_デザイン/2026-09-17_カードの抜粋文の色を他サイトと比べる.md */
@@ -290,21 +350,23 @@ section{padding:46px 0}
 /* 写真は下側（石段と灯籠）を使う。上側は奉納札の白い縦文字と紙垂が入り、横長に切ると壊れた表示に見える */
 .fv-photo img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 100%;
   filter:saturate(.74) brightness(.8) contrast(1.05)}
-.fv-caption{position:absolute;left:28px;bottom:22px;font-family:var(--serif);font-size:10.5px;letter-spacing:.34em;
-  text-transform:uppercase;color:rgba(255,255,255,.7)}
+/* 中身が和文になったので、欧文セリフ＋全大文字＋広い字間をやめる（.kicker と同じ直し）。
+   写真の上の小さな地名なので、読めればよく、飾りにしない */
+.fv-caption{position:absolute;left:28px;bottom:22px;font-family:var(--gothic);font-size:11.5px;letter-spacing:var(--tr-meta);
+  color:rgba(255,255,255,.7)}
 /* 縦の余白は画面の高さに、横は幅に追従（低い窓でも入力欄までが1画面に入る） */
 .fv-body{display:flex;align-items:center;padding:clamp(40px,5vh,96px) clamp(30px,5.5vw,88px)}
 .fv-inner{width:100%;max-width:540px}
 /* 見出しは太らせない（600だと大きい級数で野暮ったい）。字間と行間で品を出す。
    「お泊まりのホテルから、」11文字が右カラム（最大540px）に1行で入る級数（42px×1.06em×11≒490px） */
-.fv-title{font-family:var(--mincho);font-weight:500;font-size:clamp(28px,2.9vw,42px);letter-spacing:.06em;line-height:1.42;margin:0}
-.fv-sub{font-family:var(--gothic);font-size:14.5px;letter-spacing:.04em;line-height:1.9;color:var(--sumi-soft);max-width:30em;margin:18px 0 0}
+.fv-title{font-family:var(--mincho);font-weight:500;font-size:clamp(28px,2.9vw,42px);letter-spacing:var(--tr-body);line-height:1.42;margin:0}
+.fv-sub{font-family:var(--gothic);font-size:15px;letter-spacing:var(--tr-head);line-height:1.9;color:var(--sumi-soft);max-width:30em;margin:18px 0 0}
 
 /* 探す。タブは文字＋下線1本、入力欄も下線1本 */
 .finder{margin-top:46px}
 .finder-tabs{display:flex;gap:28px;border-bottom:1px solid var(--line)}
 .finder-tabs [role=tab]{background:none;border:0;border-bottom:1px solid transparent;margin-bottom:-1px;padding:0 0 12px;cursor:pointer;
-  font-family:var(--mincho);font-size:14.5px;letter-spacing:.1em;color:var(--sumi-faint);transition:color .2s,border-color .2s}
+  font-family:var(--mincho);font-size:15px;letter-spacing:var(--tr-meta);color:var(--sumi-faint);transition:color .2s,border-color .2s}
 .finder-tabs [role=tab]:hover{color:var(--sumi)}
 .finder-tabs [role=tab].on{color:var(--sumi);border-bottom-color:var(--sumi)}
 .finder-panel{padding-top:26px}
@@ -312,27 +374,27 @@ section{padding:46px 0}
 .finder-form:focus-within{border-color:var(--indigo)}
 .finder-field{flex:1 1 auto;min-width:0;position:relative}
 .finder-field input{width:100%;border:0;background:transparent;padding:12px 0 14px;font-family:var(--mincho);font-size:19px;
-  letter-spacing:.04em;color:var(--sumi);outline:none}
+  letter-spacing:var(--tr-head);color:var(--sumi);outline:none}
 .finder-field input::placeholder{color:var(--sumi-faint)}
 .finder-field input::-webkit-search-cancel-button{-webkit-appearance:none}
 /* 「探す →」は文字。押せることは矢印と、hoverで矢印が進むことで伝える */
 .finder-go{border:0;background:none;padding:12px 0 14px 18px;cursor:pointer;display:inline-flex;align-items:center;gap:10px;
-  font-family:var(--mincho);font-size:14px;letter-spacing:.2em;color:var(--sumi);white-space:nowrap;transition:color .2s}
+  font-family:var(--mincho);font-size:14px;letter-spacing:var(--tr-label);color:var(--sumi);white-space:nowrap;transition:color .2s}
 .finder-go span{font-family:var(--gothic);font-size:16px;letter-spacing:0;transition:transform .2s}
 .finder-go:hover{color:var(--indigo)}
 .finder-go:hover span{transform:translateX(4px)}
 .finder-go[disabled]{opacity:.5;cursor:default}
-.finder-go--line{padding:0 0 8px;border-bottom:1px solid var(--sumi);letter-spacing:.12em;font-size:15px}
+.finder-go--line{padding:0 0 8px;border-bottom:1px solid var(--sumi);letter-spacing:var(--tr-meta);font-size:15px}
 .finder-go--line:hover{border-color:var(--indigo)}
-.finder-note{margin:16px 0 0;font-size:12.5px;line-height:1.8;color:var(--sumi-faint);min-height:1.8em}
-.finder-lead{margin:0 0 24px;font-size:14.5px;line-height:1.9;color:var(--sumi-soft)}
+.finder-note{margin:16px 0 0;font-size:13px;line-height:1.8;color:var(--sumi-faint);min-height:1.8em}
+.finder-lead{margin:0 0 24px;font-size:15px;line-height:1.9;color:var(--sumi-soft)}
 /* 入力候補。下線の真下に、罫線の箱で続ける */
 .finder-suggest{position:absolute;left:0;right:0;top:calc(100% + 1px);z-index:6;margin:0;padding:6px 0;list-style:none;
   background:var(--card);border:1px solid var(--line);box-shadow:0 22px 40px -24px rgba(0,0,0,.28)}
 .finder-suggest a{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:12px 16px}
 .finder-suggest a:hover,.finder-suggest .sel a{background:var(--panel)}
-.s-name{font-family:var(--mincho);font-size:15px;letter-spacing:.03em;color:var(--sumi)}
-.s-area{font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;color:var(--sumi-faint);white-space:nowrap}
+.s-name{font-family:var(--mincho);font-size:15px;letter-spacing:var(--tr-display);color:var(--sumi)}
+.s-area{font-family:var(--gothic);font-size:12px;letter-spacing:var(--tr-display);color:var(--sumi-faint);white-space:nowrap}
 
 /* 検索後（S1/S2）：写真を外し、見出しと探すを1段に並べて結果を早く見せる */
 .hotel-fv--compact{grid-template-columns:1fr;min-height:0;border-bottom:1px solid var(--line)}
@@ -355,7 +417,7 @@ section{padding:46px 0}
 /* 「◯◯ にお泊まりのみなさまへ」は館名が入って長くなる。1行で受け止めず、
    /hotel/ の見出しより1段落とした級数で折り返させる */
 .hotel-fv--single .fv-title{font-size:clamp(25px,2.4vw,34px)}
-.hotel-fv--single .single-body{margin:18px 0 0;font-size:14.5px}
+.hotel-fv--single .single-body{margin:18px 0 0;font-size:15px}
 .hotel-fv--single .hotel-jump{margin-top:28px}
 /* 写真クレジットは写真の上（右下）に置く。本文側の余白を取らない */
 .hotel-fv--single .photo-credit{position:absolute;right:16px;bottom:12px;margin:0;color:rgba(255,255,255,.72)}
@@ -366,43 +428,46 @@ section{padding:46px 0}
 
 /* 結果の一覧。カードにせず罫線の行にする（800軒でも2,800軒でも目で走査できる）。
    右端は区名、現在地順のときは距離（app.js が描く） */
-.hotel-count{margin:0 0 6px;font-size:12.5px;color:var(--sumi-faint)}
+.hotel-count{margin:0 0 6px;font-size:13px;color:var(--sumi-faint)}
 .hlist{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 .hlist li{border-bottom:1px solid var(--line)}
 .hlist a{display:grid;grid-template-columns:1fr auto;column-gap:24px;align-items:baseline;padding:18px 6px;transition:background .2s}
 .hlist a:hover{background:var(--card)}
-.hl-name{font-family:var(--mincho);font-size:17px;letter-spacing:.04em;color:var(--sumi);line-height:1.5}
+.hl-name{font-family:var(--mincho);font-size:17px;letter-spacing:var(--tr-head);color:var(--sumi);line-height:1.5}
 .hlist a:hover .hl-name{color:var(--indigo)}
 .hl-sub{grid-column:1;margin-top:3px;font-size:12px;line-height:1.6;color:var(--sumi-faint)}
 .hl-side{grid-column:2;grid-row:1 / span 2;align-self:center;display:inline-flex;align-items:center;gap:12px;
-  font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--indigo-soft);white-space:nowrap}
+  font-family:var(--gothic);font-size:12px;letter-spacing:var(--tr-display);color:var(--indigo-soft);white-space:nowrap}
 .hl-arrow{font-family:var(--gothic);font-size:14px;color:var(--sumi-faint);transition:transform .2s,color .2s}
 .hlist a:hover .hl-arrow{color:var(--indigo);transform:translateX(3px)}
 .hotel-pager{margin-top:28px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 
-/* 使い方（3手順）。箱で囲まず、縦罫線と欧文の番号だけで区切る */
+/* 使い方（3手順）。箱で囲まず、縦罫線だけで区切る。前は上に「01 02 03」の番号を置いていたが、
+   どこのサイトにもある「使い方3ステップ」の部品に見えたのでやめた（2026-09-22） */
 .steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,1fr)}
 .step{padding:4px 34px 4px 28px;border-left:1px solid var(--line)}
 .step:first-child{border-left:0;padding-left:0}
-.step-no{font-family:var(--serif);font-size:12px;letter-spacing:.32em;color:var(--gold)}
-.step h3{font-family:var(--mincho);font-size:18px;letter-spacing:.06em;margin:14px 0 10px;font-weight:600;line-height:1.5}
-.step p{margin:0;font-size:13.5px;line-height:1.9;color:var(--sumi-soft)}
+.step h3{font-family:var(--mincho);font-size:18px;letter-spacing:var(--tr-body);margin:0 0 10px;font-weight:600;line-height:1.5}
+.step p{margin:0;font-size:14px;line-height:1.9;color:var(--sumi-soft)}
 
 /* 見つからないときは。罫線1本で区切り、左に説明・右に行リンク */
 .hotel-fallback{margin-top:88px;padding-top:40px;border-top:1px solid var(--line);display:grid;grid-template-columns:1.1fr .9fr;gap:48px;align-items:center}
-.hotel-fallback h3{font-family:var(--mincho);font-size:19px;letter-spacing:.06em;margin:0 0 10px;font-weight:600}
-.hotel-fallback p{margin:0;font-size:13.5px;line-height:1.85;color:var(--sumi-soft);max-width:48ch}
+.hotel-fallback h3{font-family:var(--mincho);font-size:19px;letter-spacing:var(--tr-body);margin:0 0 10px;font-weight:600}
+.hotel-fallback p{margin:0;font-size:14px;line-height:1.85;color:var(--sumi-soft);max-width:48ch}
 .hotel-fallback .links{display:flex;flex-direction:column}
 .hotel-fallback .links a{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:14px 4px;border-bottom:1px solid var(--line);
-  font-family:var(--mincho);font-size:14.5px;letter-spacing:.06em;transition:color .2s}
+  font-family:var(--mincho);font-size:15px;letter-spacing:var(--tr-body);transition:color .2s}
 .hotel-fallback .links a:first-child{border-top:1px solid var(--line)}
 .hotel-fallback .links a:hover{color:var(--indigo)}
 
-.btn{display:inline-block;border:1px solid var(--sumi);color:var(--sumi);padding:13px 30px;font-family:var(--mincho);letter-spacing:.2em;font-size:13.5px;transition:.2s}
+.btn{display:inline-block;border:1px solid var(--sumi);color:var(--sumi);padding:13px 30px;font-family:var(--mincho);letter-spacing:var(--tr-label);font-size:14px;transition:.2s}
 .btn:hover{background:var(--sumi);color:var(--washi)}
 
 /* pagination */
-.pagination{margin-top:44px;font-family:var(--serif);letter-spacing:.1em}
+/* 数字は欧文セリフのまま（.rs-when/.book-no と同じ体系）。
+   ただし「前へ」「次へ」は和文なので、そこだけゴシックに戻す */
+.pagination{margin-top:44px;font-family:var(--serif);letter-spacing:var(--tr-meta)}
+.pagination .prev,.pagination .next{font-family:var(--gothic);letter-spacing:var(--tr-body)}
 .pagination .page-numbers{display:inline-block;padding:8px 14px;border:1px solid var(--line);margin-right:6px;color:var(--sumi-soft)}
 .pagination .page-numbers.current{background:var(--indigo);color:#fff;border-color:var(--indigo)}
 
@@ -412,22 +477,22 @@ section{padding:46px 0}
    **.page-main より後ろに置くこと。**詳細度が同じなので、前に書くと効かない
    （2026-09-17 まで実際に効いておらず、/hotel/・ホテル個別・/nearby/ の3画面が150pxのままだった） */
 .page-main--after-hero{padding:72px 0 88px}
-.breadcrumb{font-size:12px;color:var(--sumi-faint);margin-bottom:26px;letter-spacing:.04em}
+.breadcrumb{font-size:12px;color:var(--sumi-faint);margin-bottom:26px;letter-spacing:var(--tr-head)}
 .breadcrumb a:hover{color:var(--sumi)}
 .single-head .meta-top{display:flex;gap:8px;margin-bottom:14px}
 .chip--cat{border-color:var(--indigo-soft);color:var(--indigo-soft)}
-.single-title{font-family:var(--mincho);font-size:clamp(27px,4vw,42px);letter-spacing:.08em;font-weight:600;margin:0 0 30px;line-height:1.4}
+.single-title{font-family:var(--mincho);font-size:clamp(27px,4vw,42px);letter-spacing:var(--tr-meta);font-weight:600;margin:0 0 30px;line-height:1.4}
 /* hotel: ホテル専用ページのページ内アンカー。
    タブをやめて縦並びにしたので、上から下へ読める順に並べたうえで、
    カウンターの人が /hotel/<slug>/#course に直行できるようにしている */
 .hotel-jump{display:flex;gap:18px;flex-wrap:wrap;margin:32px 0 0;
   padding-bottom:14px;border-bottom:1px solid var(--line);
-  font-family:var(--mincho);font-size:14px;letter-spacing:.08em}
+  font-family:var(--mincho);font-size:14px;letter-spacing:var(--tr-meta)}
 .hotel-jump a{color:var(--sumi-soft)}
 .hotel-jump a:hover{color:var(--sumi)}
 /* セクション共通の padding:88px を打ち消す（下層ページでは詰めて並べたい） */
 .hotel-section{padding:0;margin-top:44px;scroll-margin-top:120px}
-.hotel-back{margin-top:56px;font-family:var(--mincho);letter-spacing:.08em}
+.hotel-back{margin-top:56px;font-family:var(--mincho);letter-spacing:var(--tr-meta)}
 /* ============ いまいる場所から（/nearby/）============
    2026-09-17 に作り直し → 60_デザイン/2026-09-17_現在地から探す画面のデザイン監査.md
    ・FVは /hotel/ と同じ見開きを流用（このページだけサイトの視覚言語から外れていた）
@@ -460,11 +525,11 @@ section{padding:46px 0}
 .nearby-fv--done .nearby-locate{margin-top:0}
 .nearby-state{display:flex;align-items:baseline;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-top:14px}
 /* 取得前は状態（取得中・失敗）、取得後は結果の要約。同じ要素が兼ねる */
-.nearby-where{margin:0;font-size:12.5px;line-height:1.8;color:var(--sumi-faint);min-height:1.8em}
+.nearby-where{margin:0;font-size:13px;line-height:1.8;color:var(--sumi-faint);min-height:1.8em}
 .nearby-fv--done .nearby-where{font-size:14px;color:var(--sumi-soft);min-height:0}
 .nearby-again[hidden]{display:none}
 .nearby-again{border:0;background:none;padding:0 0 3px;cursor:pointer;font-family:var(--gothic);font-size:13px;
-  letter-spacing:.08em;color:var(--sumi-soft);border-bottom:1px solid var(--line)}
+  letter-spacing:var(--tr-meta);color:var(--sumi-soft);border-bottom:1px solid var(--line)}
 .nearby-again:hover{color:var(--indigo);border-color:var(--indigo)}
 
 /* 押す前の手順。/hotel/ の .steps と同じ部品（縦罫と欧文の番号だけ）。
@@ -482,9 +547,8 @@ section{padding:46px 0}
    （2026-09-18、幅を狭めたときに文字と縦罫がくっついて発覚） */
 .nearby-steps .step{padding:0 24px}
 .nearby-steps .step:first-child{padding-left:0}
-.nearby-steps .step-no{font-size:10.5px;letter-spacing:.28em}
-.nearby-steps h2{font-family:var(--mincho);font-size:15px;letter-spacing:.05em;margin:9px 0 7px;font-weight:600;line-height:1.5}
-.nearby-steps .step p{font-size:12.5px;line-height:1.85}
+.nearby-steps h2{font-family:var(--mincho);font-size:15px;letter-spacing:var(--tr-head);margin:9px 0 7px;font-weight:600;line-height:1.5}
+.nearby-steps .step p{font-size:13px;line-height:1.85}
 
 /* 取得前、main に出ているのは「位置情報を使わないときは」の1枚だけ。
    .hotel-fallback の上余白88pxは**上に欄がある前提**の値なので、見開きの直後だと
@@ -513,16 +577,16 @@ section{padding:46px 0}
   padding:17px 6px;border-bottom:1px solid var(--line);transition:background .2s}
 .nb-row[hidden]{display:none}
 .nb-row:hover{background:var(--card)}
-.nb-name{grid-column:1;font-family:var(--mincho);font-size:17px;letter-spacing:.04em;font-weight:600;margin:0;line-height:1.5}
+.nb-name{grid-column:1;font-family:var(--mincho);font-size:17px;letter-spacing:var(--tr-head);font-weight:600;margin:0;line-height:1.5}
 .nb-row:hover .nb-name a{color:var(--indigo)}
 .nb-meta{grid-column:1;margin:3px 0 0;font-size:12px;line-height:1.6;color:var(--sumi-faint)}
 /* 距離は名前と同じ行の高さに。以前は12pxで Map / Tel と並んでいて、近い順の意味が読めなかった */
 /* 折り返しを止めない。日本語の「徒歩約81分」は7字だが、英語 About 81 min walk・
    スペイン語 A unos 81 min a pie は固定幅を超える。はみ出させるより2行にする */
-.nb-walk{grid-column:2;grid-row:1;margin:0;font-family:var(--mono);font-size:12px;letter-spacing:.08em;
+.nb-walk{grid-column:2;grid-row:1;margin:0;font-family:var(--gothic);font-size:13px;letter-spacing:var(--tr-display);
   line-height:1.5;color:var(--indigo);text-align:right}
 .nb-acts{grid-column:2;grid-row:2;margin:4px 0 0;display:flex;gap:14px;justify-content:flex-end;
-  font-size:11.5px;color:var(--sumi-faint);white-space:nowrap}
+  font-size:12px;color:var(--sumi-faint);white-space:nowrap}
 .nb-acts a{color:var(--indigo-soft);text-underline-offset:3px}
 .nb-acts a:hover{color:var(--indigo);text-decoration:underline}
 /* トップの診断は独立セクションなので上下に余白と最低高さを持つが、
@@ -533,12 +597,66 @@ section{padding:46px 0}
 
 .single-hero{margin:0 0 36px}
 /* 写真クレジット（撮影者・提供元）。本文の邪魔をしないよう写真の右下に小さく添える */
-.photo-credit{margin:8px 0 0;font-size:11px;line-height:1.5;letter-spacing:.06em;color:var(--sumi-faint);text-align:right}
+.photo-credit{margin:8px 0 0;font-size:11px;line-height:1.5;letter-spacing:var(--tr-body);color:var(--sumi-faint);text-align:right}
 .single-body{max-width:70ch;color:var(--sumi-soft);font-size:15px}
+
+/* ---- スポット記事の型（複数写真の組み方 → templates/spot-layout-*.php） ----
+   変わるのは写真と本文の組み方だけ。基本情報・地図・回遊はどの型でも同じ位置に出る。
+   写真は広く取ってよいが、**文字の幅は型が変わっても変えない**（60〜70ch）。
+   誌面風だけ本文が狭く見える、といった差が出ると同じサイトに見えなくなる */
+.spot-photo{margin:0}
+.spot-photo .imgwrap{display:block}
+/* 写真を2枚ずつ。3枚以上を1行に詰めると1枚が小さくなり、一覧の写真と区別がつかなくなる */
+.spot-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:0 0 30px}
+
+/* 上のスライド。1枚が枠いっぱいで、次の1枚の端をのぞかせて横に続くことを見せる */
+.single-hero--slider{margin-bottom:30px}
+/* 横スクロールの棒は出さない。写真1枚ごとに送る欄なので、棒があっても掴む余地がないうえ、
+   写真のすぐ下に灰色の線が1本走って額縁が濁る。いま何枚目かは下の点が伝える
+   （カードを並べる欄のほうは、指で流す量が連続なので棒を残している） */
+.ep-hero-slider__list{gap:12px;padding-bottom:0;scrollbar-width:none;-ms-overflow-style:none}
+.ep-hero-slider__list::-webkit-scrollbar{display:none}
+.ep-hero-slider__item{flex:0 0 100%;scroll-snap-align:center}
+/* 送りのボタンは写真の上に乗る。地が写真で固定されないので、白を敷いてから墨で描く
+   （枠線だけだと、暗い写真では輪郭が消え、明るい写真では矢印が消える） */
+.ep-hero-slider .ep-slider__btn--float{background:rgba(255,255,255,.92);border-color:rgba(255,255,255,.92);color:var(--sumi)}
+.ep-hero-slider .ep-slider__btn--float.ep-slider__btn--prev{left:14px}
+.ep-hero-slider .ep-slider__btn--float.ep-slider__btn--next{right:14px}
+/* 押せないときも枠は残す。既定の opacity:.45 は白い地ごと薄くするので、
+   写真の上では「消えかけたボタン」になり、壊れているのか端なのか分からない */
+.ep-hero-slider .ep-slider__btn--float:disabled{opacity:1;background:rgba(255,255,255,.55);border-color:rgba(255,255,255,.55);color:var(--sumi-mute)}
+/* いま何枚目か。丸ではなく角（このサイトには丸の言語が無い → .ep-slider__btn と同じ理由） */
+.ep-slider__dots{list-style:none;display:flex;justify-content:center;gap:9px;margin:14px 0 0;padding:0}
+.ep-slider__dot{display:block;width:8px;height:8px;padding:0;border:1px solid var(--sumi-mute);background:none;cursor:pointer;transition:background-color .3s,border-color .3s}
+.ep-slider__dot[aria-current="true"]{background:var(--indigo);border-color:var(--indigo)}
+
+/* 誌面風。写真と本文を左右交互に組む。文字が入る側は6、写真は5（写真が主張しすぎない比） */
+.single-body--magazine,.single-body--photo-first{max-width:none}
+/* 文は写真の高さの真ん中に置く。上端で揃えると、段落が2〜3行しかないとき
+   写真の下半分ぶんの余白が文の下に空き、「書きかけ」に見える */
+.mag-row{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:44px;align-items:center;margin:0 0 54px}
+.mag-row--flip .mag-photo{order:2}
+.mag-text{max-width:60ch;color:var(--sumi-soft);font-size:15px}
+.mag-text>:first-child{margin-top:0}
+
+/* 写真主役。1枚目を大きく、そのあとは2枚ずつ。本文は写真の間に中央で置く */
+.pf-lead{margin:0 0 30px}
+.pf-text{max-width:70ch;margin:0 auto 36px;color:var(--sumi-soft);font-size:15px}
+.pf-text>:first-child{margin-top:0}
+
+@media(max-width:720px){
+  /* 左右に組むには幅が足りない。写真→本文の縦並びに落とす（順番は本文の並びどおり） */
+  .mag-row{grid-template-columns:1fr;gap:18px;margin-bottom:38px}
+  .mag-row--flip .mag-photo{order:0}
+  /* 2枚並べると1枚が親指ほどになる。何が写っているか分からない写真は出す意味が無い */
+  .spot-grid{grid-template-columns:1fr;gap:14px}
+  .ep-hero-slider .ep-slider__btn--float.ep-slider__btn--prev{left:8px}
+  .ep-hero-slider .ep-slider__btn--float.ep-slider__btn--next{right:8px}
+}
 .infobox{background:var(--panel);border:1px solid var(--line);padding:28px;margin-top:44px}
-.infobox-title{font-family:var(--mincho);font-size:19px;letter-spacing:.1em;font-weight:600;margin:0 0 16px}
+.infobox-title{font-family:var(--mincho);font-size:19px;letter-spacing:var(--tr-meta);font-weight:600;margin:0 0 16px}
 .infotable{width:100%;border-collapse:collapse;font-size:14px}
-.infotable th{font-family:var(--mincho);text-align:left;white-space:nowrap;padding:10px 24px 10px 0;color:var(--sumi);font-weight:600;letter-spacing:.06em;border-bottom:1px solid var(--line);vertical-align:top}
+.infotable th{font-family:var(--mincho);text-align:left;white-space:nowrap;padding:10px 24px 10px 0;color:var(--sumi);font-weight:600;letter-spacing:var(--tr-body);border-bottom:1px solid var(--line);vertical-align:top}
 .infotable td{padding:10px 0;color:var(--sumi-soft);border-bottom:1px solid var(--line)}
 .mapbox{margin-top:44px;overflow:hidden}
 /* iOSのSafariは iframe を中身の幅に広げようとし、width:100% を無視してページを横に伸ばすことがある。
@@ -556,7 +674,7 @@ section{padding:46px 0}
 .qr .bg img{width:100%;height:100%;object-fit:cover}
 .qr .scrim{position:absolute;inset:0;background:linear-gradient(90deg,rgba(20,25,45,.9),rgba(20,25,45,.62))}
 .qr .inner{position:relative;z-index:2}
-.qr h3{font-family:var(--mincho);font-size:clamp(21px,2.6vw,28px);letter-spacing:.1em;margin:0 0 8px;font-weight:600}
+.qr h3{font-family:var(--mincho);font-size:clamp(21px,2.6vw,28px);letter-spacing:var(--tr-meta);margin:0 0 8px;font-weight:600}
 .qr p{margin:0;opacity:.9;font-size:14px;max-width:52ch}
 .qr .eyebrow{margin-bottom:12px}
 
@@ -567,11 +685,11 @@ section{padding:46px 0}
 .site-footer{border-top:1px solid var(--line);padding:30px 0 38px;color:var(--sumi-soft);font-size:15px}
 .fbar{display:flex;justify-content:space-between;flex-wrap:wrap;gap:22px;align-items:center}
 /* 字送り .14em のぶん横に伸びるので、24px 固定だと 320px 幅で1行に入らない（実測299px＞中身幅260px） */
-.fbrand{font-family:var(--mincho);font-size:clamp(19px,5vw,24px);letter-spacing:.14em;color:var(--sumi)}
+.fbrand{font-family:var(--mincho);font-size:clamp(19px,5vw,24px);letter-spacing:var(--tr-meta);color:var(--sumi)}
 .fnav{display:flex;gap:26px}
 .fnav a:hover{color:var(--sumi)}
 /* 著作権表記だけは一段落とす。名乗り（ロゴ）とリンクより前に出ると、目が最初にここへ行く */
-.fcopy{font-size:13.5px;letter-spacing:.04em}
+.fcopy{font-size:14px;letter-spacing:var(--tr-head)}
 
 /* ============ mobile menu ============
    右から滑り出す引き出し。後ろのページを薄く暗くして「重なっている」ことを見せる。
@@ -599,15 +717,14 @@ section{padding:46px 0}
   box-shadow:-24px 0 60px -36px rgba(0,0,0,.45)}
 .mnav.open .mnav-panel{transform:none}
 .mnav-top{display:flex;align-items:center;justify-content:space-between;flex:none;height:60px;padding:0 26px;border-bottom:1px solid var(--line)}
-.mnav-top .en{font-family:var(--serif);font-size:9.5px;letter-spacing:.36em;text-transform:uppercase;color:var(--sumi-faint)}
+.mnav-brand{font-family:var(--mincho);font-size:15px;letter-spacing:var(--tr-head);color:var(--sumi);font-weight:600}
 .mlinks{display:flex;flex-direction:column;padding:22px 26px 0}
 /* 「お泊まりのホテルから探す」12文字が引き出しの幅（375px幅で約270px）に1行で入る級数（20px×1.06em×12≒254px） */
-.mlinks a{display:flex;align-items:baseline;gap:14px;padding:14px 0;font-family:var(--mincho);font-size:20px;letter-spacing:.06em;line-height:1.4;color:var(--sumi);
+.mlinks a{display:flex;align-items:baseline;gap:14px;padding:14px 0;font-family:var(--mincho);font-size:20px;letter-spacing:var(--tr-body);line-height:1.4;color:var(--sumi);
   opacity:0;transform:translateY(10px);transition:opacity .45s ease,transform .5s cubic-bezier(.2,.7,.2,1)}
 .mnav.open .mlinks a{opacity:1;transform:none;transition-delay:calc(.14s + var(--i,0)*.06s)}
-.mlinks .no{font-family:var(--serif);font-size:11px;letter-spacing:.3em;color:var(--gold);flex:none;min-width:24px}
 .mlinks--sub{padding-top:16px;margin-top:16px;border-top:1px solid var(--line)}
-.mlinks--sub a{font-family:var(--gothic);font-size:15px;letter-spacing:.05em;padding:11px 0;color:var(--sumi-soft)}
+.mlinks--sub a{font-family:var(--gothic);font-size:15px;letter-spacing:var(--tr-head);padding:11px 0;color:var(--sumi-soft)}
 @media (prefers-reduced-motion:reduce){
   .mnav,.mnav-scrim,.mnav-panel,.mlinks a,.menu-lines i{transition:none}
 }
@@ -615,7 +732,7 @@ section{padding:46px 0}
 /* ============ 言語（スマホ）：ヘッダーのボタン＋下から上がるシート ============
    引き出しの奥に置くと見つからないので、≡ の左に常時出す。記号はPCと同じ地球の線画 */
 .lang-btn{display:none;align-items:center;gap:7px;background:none;border:0;padding:6px 4px;cursor:pointer;color:inherit;
-  font-family:var(--mono);font-size:12.5px;letter-spacing:.12em;margin-left:auto;opacity:.9}
+  font-family:var(--gothic);font-size:13px;letter-spacing:var(--tr-body);margin-left:auto;opacity:.9}
 .lang-btn+.menu-btn{margin-left:10px}
 .lsheet{position:fixed;inset:0;z-index:55;visibility:hidden;pointer-events:none;transition:visibility 0s linear .5s}
 .lsheet.open{visibility:visible;pointer-events:auto;transition-delay:0s}
@@ -662,22 +779,22 @@ section{padding:46px 0}
 .search-tools{display:flex;flex-direction:column;gap:16px;margin-bottom:30px}
 .filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px}
 .filters-field{display:flex;flex-direction:column;gap:6px;min-width:0}
-.filters-field label{font-size:11px;letter-spacing:.12em;color:var(--sumi-faint);
-  font-family:var(--mono);text-transform:uppercase}
+.filters-field label{font-size:12px;letter-spacing:var(--tr-body);color:var(--sumi-faint);
+  font-family:var(--gothic)}
 .filters-field select{max-width:min(100%,260px);border:1px solid var(--line);background:var(--card);
-  color:var(--sumi);font-family:var(--gothic);font-size:13.5px;padding:9px 12px;border-radius:2px}
+  color:var(--sumi);font-family:var(--gothic);font-size:14px;padding:9px 12px;border-radius:2px}
 .filters-actions{display:flex;align-items:center;gap:16px}
 .filters-actions button{border:1px solid var(--indigo);background:var(--indigo);color:#fff;
-  font-family:var(--gothic);font-size:13px;letter-spacing:.08em;padding:10px 22px;border-radius:2px;cursor:pointer}
+  font-family:var(--gothic);font-size:13px;letter-spacing:var(--tr-meta);padding:10px 22px;border-radius:2px;cursor:pointer}
 .filters-actions button:hover{background:var(--indigo-soft);border-color:var(--indigo-soft)}
-.filters-clear{font-size:12.5px;color:var(--sumi-soft);letter-spacing:.05em;border-bottom:1px solid var(--line)}
+.filters-clear{font-size:13px;color:var(--sumi-soft);letter-spacing:var(--tr-head);border-bottom:1px solid var(--line)}
 .filters-clear:hover{color:var(--sumi)}
 
 /* --- 結果の件数・0件のとき --- */
-.search-count{font-size:13px;color:var(--sumi-soft);letter-spacing:.05em;margin:0 0 18px}
+.search-count{font-size:13px;color:var(--sumi-soft);letter-spacing:var(--tr-head);margin:0 0 18px}
 .search-empty{max-width:620px}
-.search-empty-head{font-family:var(--mincho);font-size:18px;letter-spacing:.06em;margin:0 0 10px}
-.search-empty-why{font-size:13.5px;color:var(--sumi-soft);line-height:1.9;margin:0 0 18px}
+.search-empty-head{font-family:var(--mincho);font-size:18px;letter-spacing:var(--tr-body);margin:0 0 10px}
+.search-empty-why{font-size:14px;color:var(--sumi-soft);line-height:1.9;margin:0 0 18px}
 
 @media(max-width:840px){
   .filters{gap:12px}
@@ -705,7 +822,7 @@ section{padding:46px 0}
   .brand{flex:1 1 auto;min-width:0}
   .brand .jp{font-size:15px;letter-spacing:.08em;white-space:nowrap}
   .brand .en{font-size:7.5px;letter-spacing:.18em;white-space:nowrap}
-  .lang-btn{gap:6px;padding:4px 2px;font-size:11.5px}
+  .lang-btn{gap:6px;padding:4px 2px;font-size:12px}
   .lang-btn .globe{width:17px;height:17px}
   .htitle{font-size:38px}
   .hero-search button{padding:0 20px}
@@ -716,11 +833,11 @@ section{padding:46px 0}
   .fv-photo{height:min(44vh,340px)}
   .fv-body{padding:36px 30px 44px}
   /* 「お泊まりのホテルから、」11文字を1行に収める（375px幅で27px×1.04em×11≒309px ≤ 315px） */
-  .fv-title{font-size:clamp(24px,7.2vw,32px);letter-spacing:.04em;hanging-punctuation:allow-end}
+  .fv-title{font-size:clamp(24px,7.2vw,32px);letter-spacing:var(--tr-head);hanging-punctuation:allow-end}
   .fv-caption{left:20px;bottom:16px}
   .finder{margin-top:34px}
   .finder-tabs{gap:22px}
-  .finder-tabs [role=tab]{font-size:13.5px;letter-spacing:.08em}
+  .finder-tabs [role=tab]{font-size:14px;letter-spacing:var(--tr-meta)}
   .finder-field input{font-size:17px}
   .hotel-fv--compact .fv-body{padding:36px 30px 32px}
   .hotel-fv--compact .fv-inner{grid-template-columns:1fr;gap:22px}
@@ -792,7 +909,7 @@ section{padding:46px 0}
    角のまま細線で置き、記事の欄は見出しの右に並べてカードに重ねない */
 .ep-slider__nav{display:flex;gap:6px;flex:none;align-self:center;align-items:center}
 /* いま何枚目か。数字は明朝、区切りはスラッシュではなく8pxの罫（ja.kyoto.travel の作法） */
-.ep-slider__count{font-family:var(--mincho);font-size:15px;letter-spacing:.06em;color:var(--sumi-soft);margin:0 12px 0 0;display:flex;align-items:center}
+.ep-slider__count{font-family:var(--mincho);font-size:15px;letter-spacing:var(--tr-body);color:var(--sumi-soft);margin:0 12px 0 0;display:flex;align-items:center}
 .ep-slider__now{color:var(--sumi)}
 .ep-slider__total::before{content:"";display:inline-block;width:8px;height:1px;background:currentColor;margin:0 7px;vertical-align:middle}
 /* 送りのボタンは地を持たない。押せるときだけ枠線が見え、ホバーで面が藍に塗られる */
@@ -812,7 +929,7 @@ section{padding:46px 0}
 .banner{flex:1 0 320px}
 .banner a{position:relative;display:block}
 .banner img{display:block;width:100%;height:auto}
-.banner__pr{position:absolute;top:6px;right:6px;background:rgba(255,255,255,.9);color:var(--sumi-soft);font-size:10.5px;letter-spacing:.08em;padding:1px 6px;line-height:1.6}
+.banner__pr{position:absolute;top:6px;right:6px;background:rgba(255,255,255,.9);color:var(--sumi-soft);font-size:11px;letter-spacing:var(--tr-meta);padding:1px 6px;line-height:1.6}
 @media (max-width:720px){.banner{flex:1 0 86%}}
 
 /* ===== 写真直置きのカード（おすすめ情報・おすすめの場所） ===== */
@@ -836,18 +953,18 @@ section{padding:46px 0}
 .top-pr .spot:hover .imgwrap img,#spots .spot:hover .imgwrap img,.top-block--posts .spot:hover .imgwrap img{transform:scale(1.04)}
 /* 記事の日付。カテゴリーではないので囲わない（囲うとバッジに見える）。
    欄の英字ラベルと同じ書体・字間にして、和文の組みに欧文の細い行を1本通す */
-.pdate{font-family:var(--serif);font-size:12.5px;letter-spacing:.14em;color:var(--sumi-faint);display:block}
-.top-block--posts .spot h4{margin:9px 0 10px;line-height:1.55}
+.pdate{font-family:var(--serif);font-size:13px;letter-spacing:var(--tr-meta);color:var(--sumi-faint);display:block}
+.top-block--posts .spot h3{margin:9px 0 10px;line-height:1.55}
 /* カテゴリーは塗りのバッジではなく1px枠の白地ラベル（京都市京セラ美術館の作法）。
    日本語に等幅欧文フォントを当てると字間が崩れるので、ここではゴシックに戻す */
-.top-pr .cat,#spots .cat,.feature .cat,.book-top .cat,.book-head .cat{font-family:var(--gothic);font-size:11px;letter-spacing:.08em;text-transform:none;color:var(--sumi-soft);border:1px solid var(--line);padding:2px 9px;display:inline-block;align-self:flex-start;background:var(--card)}
-.top-pr .spot h4{margin:11px 0 0;line-height:1.55}
-#spots .spot h4{margin:11px 0 9px;line-height:1.55}
+.top-pr .cat,#spots .cat,.feature .cat,.book-top .cat,.book-head .cat{font-family:var(--gothic);font-size:11px;letter-spacing:var(--tr-meta);text-transform:none;color:var(--sumi-soft);border:1px solid var(--line);padding:2px 9px;display:inline-block;align-self:flex-start;background:var(--card)}
+.top-pr .spot h3{margin:11px 0 0;line-height:1.55}
+#spots .spot h3{margin:11px 0 9px;line-height:1.55}
 /* 「Map」「Tel」「営業時間」の行は残す（ここは読み物ではなく店を探す欄なので、
    写真と名前だけにすると使えなくなる）。囲いが無いぶん、上の1本の罫だけで区切る */
 #spots .actions{padding-top:13px}
 /* 見出しは下線を左から引く。枠を光らせるより静か */
-.top-pr .spot h4 a,#spots .spot h4 a,.top-block--posts .spot h4 a{background-image:linear-gradient(currentColor,currentColor);background-repeat:no-repeat;background-position:0 100%;background-size:0 1px;transition:background-size .4s cubic-bezier(.16,1,.3,1)}
+.top-pr .spot h3 a,#spots .spot h3 a,.top-block--posts .spot h3 a{background-image:linear-gradient(currentColor,currentColor);background-repeat:no-repeat;background-position:0 100%;background-size:0 1px;transition:background-size .4s cubic-bezier(.16,1,.3,1)}
 .top-pr .spot:hover h4 a,#spots .spot:hover h4 a,.top-block--posts .spot:hover h4 a{background-size:100% 1px}
 /* 送るための帯なのでスクロールバーは出さない（矢印と指の操作で足りる） */
 .top-pr .ep-slider__list{padding-bottom:0;scrollbar-width:none;-ms-overflow-style:none}
@@ -865,10 +982,10 @@ section{padding:46px 0}
 .book{padding:40px 0 8px}
 .book--empty{padding:80px 0}
 .book-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:22px}
-.book-title{font-family:var(--mincho);font-size:clamp(22px,2.8vw,30px);letter-spacing:.1em;font-weight:600;margin:6px 0 4px}
-.book-meta{margin:0;color:var(--sumi-soft);font-size:13px;letter-spacing:.05em}
+.book-title{font-family:var(--mincho);font-size:clamp(22px,2.8vw,30px);letter-spacing:var(--tr-meta);font-weight:600;margin:6px 0 4px}
+.book-meta{margin:0;color:var(--sumi-soft);font-size:13px;letter-spacing:var(--tr-head)}
 .book-tools{display:flex;gap:8px;flex:none}
-.book-tool{background:none;border:1px solid var(--sumi);color:var(--sumi);padding:9px 16px;font-family:var(--mincho);letter-spacing:.12em;font-size:12.5px;cursor:pointer;transition:.2s}
+.book-tool{background:none;border:1px solid var(--sumi);color:var(--sumi);padding:9px 16px;font-family:var(--mincho);letter-spacing:var(--tr-meta);font-size:13px;cursor:pointer;transition:.2s}
 .book-tool:hover,.book-tool.is-on{background:var(--sumi);color:var(--washi)}
 .book-stage{position:relative;background:#23251f;padding:30px 0}
 .book-track{display:flex;align-items:center;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;outline:none;padding:0 50vw}
@@ -886,14 +1003,14 @@ section{padding:46px 0}
 .book-next{right:18px}
 .book.at-start .book-prev,.book.at-end .book-next{opacity:.2;pointer-events:none}
 .book-bar{display:flex;align-items:center;gap:18px;padding:14px 0 0}
-.book-no{font-family:var(--serif);letter-spacing:.1em;font-size:13px;min-width:92px;color:var(--sumi-soft)}
+.book-no{font-family:var(--serif);letter-spacing:var(--tr-meta);font-size:13px;min-width:92px;color:var(--sumi-soft)}
 .book-range{flex:1 1 auto;accent-color:var(--sumi);margin:0}
 .book-hint{font-size:12px;color:var(--sumi-faint);white-space:nowrap}
 .book-panel{padding-top:22px}
 .book-toc{list-style:none;margin:0;padding:0;columns:2;column-gap:48px}
 .book-toc li{break-inside:avoid}
 .book-toc a{display:flex;gap:14px;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
-.book-toc .no{font-family:var(--serif);color:var(--sumi-faint);min-width:2.6em;letter-spacing:.05em}
+.book-toc .no{font-family:var(--serif);color:var(--sumi-faint);min-width:2.6em;letter-spacing:var(--tr-head)}
 .book-thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:12px}
 .book-thumbs a{position:relative;display:block}
 .book-thumbs img{width:100%;height:auto;display:block;border:1px solid var(--line);background:#fff}
@@ -911,12 +1028,12 @@ body.book-zoomed{overflow:hidden}
 .book-cover{display:block}
 .book-cover img{width:100%;height:auto;display:block;box-shadow:0 18px 40px rgba(0,0,0,.22);transition:transform .8s cubic-bezier(.16,1,.3,1)}
 .book-cover:hover img{transform:translateY(-4px)}
-.book-top-text h3{font-family:var(--mincho);font-size:clamp(22px,2.6vw,30px);letter-spacing:.08em;margin:0 0 6px;font-weight:600}
-.book-top-text p{color:var(--sumi-soft);font-size:14.5px;max-width:44ch;margin:0 0 10px}
+.book-top-text h3{font-family:var(--mincho);font-size:clamp(22px,2.6vw,30px);letter-spacing:var(--tr-meta);margin:0 0 6px;font-weight:600}
+.book-top-text p{color:var(--sumi-soft);font-size:15px;max-width:44ch;margin:0 0 10px}
 .book-top-text .btn{margin-top:14px}
 .book-issues{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:24px}
 .book-issue img{width:100%;height:auto;display:block;box-shadow:0 8px 24px rgba(0,0,0,.15);margin-bottom:10px;background:#fff}
-.book-issue .ttl{display:block;font-family:var(--mincho);font-size:14px;letter-spacing:.05em;line-height:1.5}
+.book-issue .ttl{display:block;font-family:var(--mincho);font-size:14px;letter-spacing:var(--tr-head);line-height:1.5}
 .book-issue .date{display:block;font-size:12px;color:var(--sumi-faint);margin-top:2px}
 @media(max-width:840px){
   .book{padding:26px 0 8px}
@@ -931,4 +1048,43 @@ body.book-zoomed{overflow:hidden}
   .book-toc{columns:1}
   .book-top-body{grid-template-columns:1fr}
   .book-cover{max-width:220px}
+}
+
+/* ============ 欄の節奏（2026-09-21） ============
+   トップの9つの section のうち7つが「同じ幅・同じ padding:46px・見出し左＋リンク右＋
+   下にグリッド」で、まったく同じ形をしていた。アイブロウを外しても既視感が残るのは
+   装飾ではなくここ（節奏）が同じだから。
+   ただし崩すのは1箇所だけにする。あちこち崩すと、ただの散らかりになる。
+   選んだのは誌面の欄 — 紙の本は、テンプレートにも参考にした Aman にも無い、
+   この媒体だけが持っているもの。ページの終わり際に置かれているのも都合がよい。 */
+#magazine{padding:clamp(76px,9vw,132px) 0}
+#magazine .shead{margin-bottom:clamp(26px,3.4vw,50px)}
+/* 見出し（h2）は他の欄と同じ大きさ。ここだけ 62px にしていたが、並べると揃っていないようにしか
+   見えなかった（2026-09-25 野口指摘）。崩すのは欄の間と表紙の大きさまでにする */
+/* 表紙は「物」なので、大きさと影で物として見せる（他の欄には影を使っていない） */
+#magazine .book-cover img{box-shadow:0 48px 90px -44px rgba(25,27,24,.55)}
+/* 表紙を大きくする2列はPCだけ。以前は @media の外にあり、スマホの1列指定（.book-top-body）を
+   #magazine の強さで上書きしていた ―― 390px幅で「表紙260px＋本文119px」になり、
+   本文が右端の細い帯に押し込まれていた（2026-09-25） */
+@media(min-width:841px){
+  #magazine .wrap{max-width:1380px}
+  #magazine .book-top-body{grid-template-columns:clamp(260px,30vw,420px) 1fr;gap:clamp(40px,6vw,88px)}
+  /* 号名（h3）は特集の記事名と同じ大きさ。42px だと見出し（h2 46px）と区別がつかなかった */
+  #magazine .book-top-text h3{font-size:clamp(25px,3.2vw,36px);letter-spacing:var(--tr-head)}
+  /* 36ch（和文で約18字）だと4行になり、最後の行に「に。」だけ落ちていた。
+     短い紹介文なので行の長さを均等にそろえ、句で折る（見出しと同じ扱い） */
+  #magazine .book-top-text p{font-size:16px;max-width:24em;text-wrap:balance;line-break:strict}
+  @supports (word-break:auto-phrase){#magazine .book-top-text p{word-break:auto-phrase}}
+}
+/* 読み物の欄と一覧の欄で上下の間を変える。同じ間隔が9回続くと、欄ではなく表に見える */
+#feature,#block-picks{padding:clamp(54px,6vw,82px) 0}
+
+/* ============ 指で押せる大きさ（2026-09-21） ============
+   実測（375px・実キー操作）で 44px を下回っていたもの：
+   ≡ 32×32 / 言語ボタン 21×25 / 絞り込みチップ 高さ38.1px / 引き出しの欄リンク 43px。
+   見た目の大きさは変えず、当たり判定だけ広げる */
+@media(max-width:840px){
+  .menu-btn,.lang-btn{min-width:44px;min-height:44px;justify-content:center}
+  .chip{padding:11px 16px}
+  .mlinks a{min-height:44px;align-items:center}
 }

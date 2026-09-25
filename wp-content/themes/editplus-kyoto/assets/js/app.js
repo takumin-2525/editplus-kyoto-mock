@@ -400,6 +400,8 @@
 		}
 		var count = slider.querySelector('.ep-slider__count');
 		var now = slider.querySelector('.ep-slider__now');
+		// 点（スポット記事の写真スライド）。バナーの欄には無いので、あるときだけ動かす
+		var dots = Array.prototype.slice.call(slider.querySelectorAll('.ep-slider__dot'));
 
 		function itemStep() {
 			var item = list.querySelector('.ep-slider__item');
@@ -419,12 +421,23 @@
 					now.textContent = Math.round(list.scrollLeft / itemStep()) + 1;
 				}
 			}
+			if (dots.length) {
+				var at = Math.round(list.scrollLeft / itemStep());
+				dots.forEach(function (dot, i) {
+					// aria-current は「いまここ」を読み上げにも伝える。
+					// クラスで塗るだけだと、見えている人にしか伝わらない
+					if (i === at) { dot.setAttribute('aria-current', 'true'); } else { dot.removeAttribute('aria-current'); }
+				});
+			}
 		}
 		function step(dir) {
 			list.scrollBy({ left: dir * itemStep(), behavior: 'smooth' });
 		}
 		prev.addEventListener('click', function () { step(-1); });
 		next.addEventListener('click', function () { step(1); });
+		dots.forEach(function (dot, i) {
+			dot.addEventListener('click', function () { list.scrollTo({ left: i * itemStep(), behavior: 'smooth' }); });
+		});
 		list.addEventListener('scroll', update, { passive: true });
 		window.addEventListener('resize', update);
 		window.addEventListener('load', update);
