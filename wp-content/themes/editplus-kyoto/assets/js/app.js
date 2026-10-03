@@ -58,7 +58,61 @@
 				if (summary) { summary.focus(); }
 			}
 		});
+		// Tab で候補の外へ出たら閉じる（2026-10-03。BUGS #26）。閉じるのがクリックと Esc だけだったので、
+		// フォーカスがパンくずや本文へ移っても候補の箱が本文の上に残っていた
+		menu.addEventListener('focusout', function (e) {
+			if (menu.open && e.relatedTarget && !menu.contains(e.relatedTarget)) {
+				menu.open = false;
+			}
+		});
+		// 選んだら閉じる。開いたまま次のページへ行くと、ブラウザの「戻る」がその状態のページを戻してくる（#12）
+		menu.addEventListener('click', function (e) {
+			if (e.target.closest('a')) { menu.open = false; }
+		});
+		window.addEventListener('pageshow', function (e) {
+			if (e.persisted) { menu.open = false; }
+		});
 	});
+
+	/*
+	 * 引き出し（≡）と言語シートを開いているあいだの約束（2026-10-03）
+	 * 1. 後ろのページを動かさない（BUGS #7）。以前は body の overflow を hidden にしていたが、style.css の html,body{overflow-x:clip} で
+	 *    html の overflow が visible でなくなるため body の指定がビューポートに伝わらず、暗い所や引き出しをなぞると後ろが動き、
+	 *    閉じると別の位置にいた。html を止め、iPhone（overflow だけでは止まらない版がある）のために body を今の位置で固定し、閉じたら戻す
+	 * 2. Tab を中に閉じ込める（#25）。aria-modal なのに、Tab で後ろのパンくずへ出て後ろのページがスクロールした。後ろを inert にする
+	 * 3. 閉じたら開いたボタンへフォーカスを返す（#25）。以前は Esc のときだけで、× や暗い所で閉じるとフォーカスが body に落ちた
+	 */
+	var lockY = 0;
+	function lockPage(dialog) {
+		var b = document.body;
+		if (b.style.position === 'fixed') { return; }
+		lockY = window.pageYOffset;
+		document.documentElement.style.overflow = 'hidden';
+		b.style.position = 'fixed';
+		b.style.top = -lockY + 'px';
+		b.style.left = '0';
+		b.style.right = '0';
+		Array.prototype.forEach.call(b.children, function (n) {
+			if (n !== dialog && n.tagName !== 'SCRIPT' && !n.inert) {
+				n.inert = true;
+				n.setAttribute('data-ep-inert', '');
+			}
+		});
+	}
+	function unlockPage() {
+		var b = document.body;
+		if (b.style.position !== 'fixed') { return; }
+		document.documentElement.style.overflow = '';
+		b.style.position = '';
+		b.style.top = '';
+		b.style.left = '';
+		b.style.right = '';
+		Array.prototype.forEach.call(document.querySelectorAll('[data-ep-inert]'), function (n) {
+			n.inert = false;
+			n.removeAttribute('data-ep-inert');
+		});
+		window.scrollTo(0, lockY);
+	}
 
 	// --- /hotel/ 探すカード（finder）：タブ・入力候補・現在地順 ---
 	// 文字列での絞り込みとページ送りはサーバー側（?hotel_q= / ?hotel_page=）でやっている。
@@ -96,7 +150,8 @@
 		var rowHtml = function (h, side) {
 			return '<li><a href="' + escG(h.url) + '">'
 				+ '<span class="hl-name">' + escG(h.title) + '</span>'
-				+ (h.address ? '<span class="hl-sub">' + escG(h.address) + '</span>' : '')
+				// 訳の無い住所は日本語のまま。lang を付ける（読み上げと、韓国語の「語の途中で折らない」が掛からないように）
+				+ (h.address ? '<span class="hl-sub"' + (h.address_lang ? ' lang="' + escG(h.address_lang) + '"' : '') + '>' + escG(h.address) + '</span>' : '')
 				+ '<span class="hl-side">' + escG(side || '') + '<span class="hl-arrow" aria-hidden="true">→</span></span>'
 				+ '</a></li>';
 		};
@@ -144,6 +199,14 @@
 				suggest.hidden = false;
 				qField.setAttribute('aria-expanded', 'true');
 				selIdx = -1;
+				// 候補が画面の下にはみ出すなら、はみ出した分だけページを上げる（2026-10-03。BUGS #34）。
+				// スマホでは入力欄が画面の下のほうにあり、1件目から下が切れていた。キーボードが出ているときは
+				// その上までしか見えないので、visualViewport（キーボードを除いた見える範囲）で測る
+				var vv = window.visualViewport;
+				var seen = vv ? vv.offsetTop + vv.height : window.innerHeight;
+				var over = suggest.getBoundingClientRect().bottom + 12 - seen;
+				var room = qField.getBoundingClientRect().top - (header ? header.getBoundingClientRect().bottom : 0) - 12;
+				if (over > 0 && room > 0) { window.scrollBy(0, Math.min(over, room)); }
 			};
 			var fetchSuggest = function () {
 				var q = qField.value.trim();
@@ -191,14 +254,28 @@
 			// 「300m」「1.2km」。1km未満は10m単位に丸める（GPSの精度以上に細かく出さない）
 			var distanceLabel = function (meters) {
 				if (meters == null) { return ''; }
+				// 50m未満は数字で出さない（「約0m」と出ていた。GPSの誤差より細かい数字は意味が無い）
+				if (meters < 50) { return tg('distNear', '現在地のすぐ近く'); }
 				if (meters < 1000) {
 					return String(tg('distM', '現在地から約%dm')).replace('%d', Math.round(meters / 10) * 10);
 				}
 				return String(tg('distKm', '現在地から約%skm')).replace('%s', (meters / 1000).toFixed(1));
 			};
 
+			// 取得中は、押したボタンの文字を「位置情報を取得しています…」に替える（2026-10-03。BUGS #18）。
+			// 文はボタンの下（#hotelGeoMsg）にも出しているが、スマホではボタンが画面の下端にあり、文は画面の外だった。
+			// 反応が見えないので押し直すと、結果が描かれて写真が消えた瞬間の一覧のホテルを誤って押していた。
+			// disabled にはしない（フォーカスが body に落ちる。#32）。二度押しは locating で止める
+			var nearLabel = nearBtn.innerHTML;
+			var locating = false;
+			var nearBusy = function (on) {
+				locating = on;
+				nearBtn.setAttribute('aria-disabled', on ? 'true' : 'false');
+				nearBtn.innerHTML = on ? escG(tg('geoLocating', '位置情報を取得しています…')) : nearLabel;
+			};
 			nearBtn.addEventListener('click', function () {
-				nearBtn.disabled = true;
+				if (locating) { return; }
+				nearBusy(true);
 				say(tg('geoLocating', '位置情報を取得しています…'));
 
 				navigator.geolocation.getCurrentPosition(
@@ -208,7 +285,7 @@
 						fetch(url)
 							.then(function (r) { return r.json(); })
 							.then(function (d) {
-								nearBtn.disabled = false;
+								nearBusy(false);
 								if (!d.hotels || !d.hotels.length) {
 									say(tg('geoNone', '近くに提携ホテルが見つかりませんでした。'));
 									return;
@@ -217,8 +294,10 @@
 								var items = d.hotels.map(function (h) {
 									return rowHtml(h, distanceLabel(h.distance));
 								}).join('');
-								var count = String(tg('geoTop', '現在地から近い順・上位%s件'))
-									.replace('%s', d.hotels.length);
+								// 1件のときは単数の文（英語・スペイン語で「Nearest 1 hotels」にしない）
+								var count = d.hotels.length === 1
+									? String(tg('geoTop1', '現在地からいちばん近いホテル'))
+									: String(tg('geoTop', '現在地から近い順・上位%s件')).replace('%s', d.hotels.length);
 								results.innerHTML = '<p class="hotel-count">' + escG(count) + '</p>'
 									+ '<ul class="hlist" id="hotelList">' + items + '</ul>';
 								if (resultsTitle) { resultsTitle.textContent = tg('nearTitle', '現在地から近いホテル'); }
@@ -228,16 +307,23 @@
 								if (hero) { hero.classList.add('hotel-fv--compact'); }
 								say(tg('geoSorted', '現在地から近い順に並べました。'));
 								(resultsSec || results).scrollIntoView({ behavior: 'smooth', block: 'start' });
+								// フォーカスは結果の見出しへ（押したボタンは畳んだ見開きの中。読み上げに結果が出たことを伝える。#32）
+								if (resultsTitle) {
+									resultsTitle.setAttribute('tabindex', '-1');
+									resultsTitle.focus({ preventScroll: true });
+								}
 							})
 							.catch(function () {
-								nearBtn.disabled = false;
+								nearBusy(false);
 								say(tg('loadFailed', '読み込みに失敗しました。'));
 							});
 					},
 					function () {
-						// 拒否・タイムアウトのどちらも、次の一手（名前で探す）を添えて出す
-						nearBtn.disabled = false;
+						// 拒否・タイムアウトのどちらも、次の一手（名前で探す）を添えて出す。
+						// 文はボタンのすぐ下。スマホでは画面の外になりうるので、見えるところまで送る（#18）
+						nearBusy(false);
 						say(tg('geoDenied', '位置情報を使えませんでした。ホテル名で探してください。'));
+						if (geoMsg) { geoMsg.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
 					},
 					{ enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 }
 				);
@@ -267,6 +353,15 @@
 		panel.addEventListener('transitionend', onEnd);
 		setTimeout(unmount, 400); // reduced-motion等でtransitionendが発火しない場合の保険
 	};
+	// 押したチップより上で開いているパネルは、動きを付けずにその場で閉じる（2026-10-03。BUGS #9）。
+	// 閉じる動き（0.35秒）のあいだに上の高さが縮み、押したチップも開いた子チップも指の位置から158px上へ逃げていた。
+	// その場で閉じれば縮んだ量がすぐ測れるので、同じだけページを戻して、押したチップを指の下に留める
+	var closeSubPanelNow = function (panel) {
+		panel.style.transition = 'none';
+		panel.classList.remove('open', 'mounted');
+		void panel.offsetHeight;
+		panel.style.transition = '';
+	};
 	document.querySelectorAll('.chip-toggle').forEach(function (btn) {
 		btn.addEventListener('click', function (e) {
 			var panel = document.getElementById(btn.getAttribute('aria-controls'));
@@ -280,9 +375,12 @@
 			}
 			e.preventDefault();
 			var wasOpen = panel.classList.contains('open');
+			var before = btn.getBoundingClientRect().top;
 			// 同じ軸（エリア/ジャンル）内で開けるのは一つだけ
 			var axis = btn.closest('.axis') || document;
-			axis.querySelectorAll('.chips-subwrap.open').forEach(closeSubPanel);
+			axis.querySelectorAll('.chips-subwrap.open').forEach(function (p) {
+				if (p !== panel && p.getBoundingClientRect().top < before) { closeSubPanelNow(p); } else { closeSubPanel(p); }
+			});
 			axis.querySelectorAll('.chip-toggle.open').forEach(function (b) {
 				b.setAttribute('aria-expanded', 'false');
 				b.classList.remove('open');
@@ -294,6 +392,16 @@
 				panel.classList.add('open');
 				btn.setAttribute('aria-expanded', 'true');
 				btn.classList.add('open');
+			}
+			var moved = btn.getBoundingClientRect().top - before;
+			if (Math.abs(moved) >= 1) { window.scrollBy(0, moved); }
+		});
+		// 親チップはリンク（JS が無いときは親の一覧へ飛べる）なので、スペースキーは既定でページを1画面送ってしまう（BUGS #30）。
+		// role="button"（functions.php）と名乗る以上、ボタンと同じくスペースでも開閉する
+		btn.addEventListener('keydown', function (e) {
+			if (e.key === ' ' || e.key === 'Spacebar') {
+				e.preventDefault();
+				btn.click();
 			}
 		});
 	});
@@ -307,26 +415,36 @@
 			langSheet.classList.add('open');
 			langSheet.setAttribute('aria-hidden', 'false');
 			langBtn.setAttribute('aria-expanded', 'true');
-			document.body.style.overflow = 'hidden';
+			lockPage(langSheet);
 			var first = langSheet.querySelector('a');
 			if (first) { first.focus(); }
 		};
-		var closeSheet = function () {
+		/** @param {boolean} [stay] フォーカスを地球ボタンへ返さない（言語を選んで次のページへ行くとき） */
+		var closeSheet = function (stay) {
+			if (!langSheet.classList.contains('open')) { return; }
 			langSheet.classList.remove('open');
 			langSheet.setAttribute('aria-hidden', 'true');
 			langBtn.setAttribute('aria-expanded', 'false');
-			document.body.style.overflow = '';
+			unlockPage();
+			if (stay !== true) { langBtn.focus(); }
 		};
 		langBtn.addEventListener('click', function () {
 			if (langSheet.classList.contains('open')) { closeSheet(); } else { openSheet(); }
 		});
 		var sheetScrim = document.getElementById('langSheetScrim');
-		if (sheetScrim) { sheetScrim.addEventListener('click', closeSheet); }
+		if (sheetScrim) { sheetScrim.addEventListener('click', function () { closeSheet(); }); }
 		document.addEventListener('keydown', function (e) {
 			if (e.key === 'Escape' && langSheet.classList.contains('open')) {
 				closeSheet();
-				langBtn.focus();
 			}
+		});
+		// 選んだら閉じる。閉じずに次のページへ行くと、ブラウザの「戻る」が開いた状態のページ（後ろのスクロールも止まったまま）を
+		// そのまま戻してきた（BUGS #12）。戻る用のキャッシュから出てきたときも念のため閉じる
+		langSheet.addEventListener('click', function (e) {
+			if (e.target.closest('a')) { closeSheet(true); }
+		});
+		window.addEventListener('pageshow', function (e) {
+			if (e.persisted) { closeSheet(true); }
 		});
 	}
 
@@ -344,7 +462,7 @@
 			mnav.classList.add('open');
 			mnav.setAttribute('aria-hidden', 'false');
 			menuBtn.setAttribute('aria-expanded', 'true');
-			document.body.style.overflow = 'hidden'; // 背景のスクロールを止める
+			lockPage(mnav); // 背景のスクロールを止め、Tab を引き出しの中に閉じ込める
 			if (sw > 0) {
 				document.body.style.paddingRight = sw + 'px';
 				if (header) {
@@ -353,34 +471,40 @@
 			}
 			if (mclose) { mclose.focus(); }
 		};
-		var closeMenu = function () {
+		/** @param {boolean} [stay] フォーカスを ≡ へ返さない（引き出しのリンクで移動するとき） */
+		var closeMenu = function (stay) {
+			if (!mnav.classList.contains('open')) { return; }
 			mnav.classList.remove('open');
 			mnav.setAttribute('aria-hidden', 'true');
 			menuBtn.setAttribute('aria-expanded', 'false');
-			document.body.style.overflow = '';
+			unlockPage();
 			document.body.style.paddingRight = '';
 			if (header) {
 				header.style.paddingRight = '';
 			}
+			if (stay !== true) { menuBtn.focus(); }
 		};
 		menuBtn.addEventListener('click', openMenu);
 		if (mclose) {
-			mclose.addEventListener('click', closeMenu);
+			mclose.addEventListener('click', function () { closeMenu(); });
 		}
 		if (mscrim) {
-			mscrim.addEventListener('click', closeMenu); // 暗幕（ページ側）を押しても閉じる
+			mscrim.addEventListener('click', function () { closeMenu(); }); // 暗幕（ページ側）を押しても閉じる
 		}
 		document.addEventListener('keydown', function (e) {
 			if (e.key === 'Escape' && mnav.classList.contains('open')) {
 				closeMenu();
-				menuBtn.focus();
 			}
 		});
-		// メニュー内リンクを押したら閉じる（同一ページ内アンカー対策）
+		// メニュー内リンクを押したら閉じる（同一ページ内アンカー対策）。
+		// 閉じる処理（ページの固定を外して元の位置へ戻す）はリンクの既定の動き（アンカーへの移動）より先に走るので、着地は崩れない
 		mnav.addEventListener('click', function (e) {
 			if (e.target.closest('a')) {
-				closeMenu();
+				closeMenu(true);
 			}
+		});
+		window.addEventListener('pageshow', function (e) {
+			if (e.persisted) { closeMenu(true); }
 		});
 	}
 })();
@@ -408,12 +532,18 @@
 			var gap = parseFloat(getComputedStyle(list).columnGap) || 0;
 			return item ? item.getBoundingClientRect().width + gap : list.clientWidth;
 		}
+		// 端のボタンは disabled にしない（2026-10-03。BUGS #32）。フォーカスのあるボタンを disabled にすると、
+		// フォーカスが body に落ちて枠が消え、次の Tab で1枚目の点へ飛んでいた。押せないことは aria-disabled と見た目で伝え、
+		// 押されても何もしない（下の step）
+		function setEdge(btn, off) {
+			btn.setAttribute('aria-disabled', off ? 'true' : 'false');
+		}
 		function update() {
 			var overflow = list.scrollWidth > list.clientWidth + 1;
 			prev.hidden = !overflow;
 			next.hidden = !overflow;
-			prev.disabled = list.scrollLeft <= 1;
-			next.disabled = list.scrollLeft + list.clientWidth >= list.scrollWidth - 1;
+			setEdge(prev, list.scrollLeft <= 1);
+			setEdge(next, list.scrollLeft + list.clientWidth >= list.scrollWidth - 1);
 			if (count) {
 				// 「いま何枚目か」。収まりきっているときは出さない（送る必要が無いため）
 				count.hidden = !overflow;
@@ -430,15 +560,34 @@
 				});
 			}
 		}
+		// 送り先を「何枚目か」で持つ（2026-10-03。BUGS #15）。以前は scrollBy で「いまの位置＋1枚」を送っていたため、
+		// 動いている途中に押すと途中の位置からの1枚になり、吸着（scroll-snap）が近いほうの写真へ引き戻した
+		// （PC で60ms間隔に3回押すと1枚しか進まない）。止まったら実際の位置に合わせ直す
+		var target = null;
 		function step(dir) {
-			list.scrollBy({ left: dir * itemStep(), behavior: 'smooth' });
+			var max = Math.ceil((list.scrollWidth - list.clientWidth) / itemStep() - 0.01);
+			var from = (target === null) ? Math.round(list.scrollLeft / itemStep()) : target;
+			var to = Math.max(0, Math.min(max, from + dir));
+			if (to === from) { return; } // 端では何もしない（ボタンは aria-disabled）
+			target = to;
+			list.scrollTo({ left: to * itemStep(), behavior: 'smooth' });
 		}
+		var settle = null;
+		var settled = function () { target = null; update(); };
 		prev.addEventListener('click', function () { step(-1); });
 		next.addEventListener('click', function () { step(1); });
 		dots.forEach(function (dot, i) {
-			dot.addEventListener('click', function () { list.scrollTo({ left: i * itemStep(), behavior: 'smooth' }); });
+			dot.addEventListener('click', function () { target = i; list.scrollTo({ left: i * itemStep(), behavior: 'smooth' }); });
 		});
-		list.addEventListener('scroll', update, { passive: true });
+		list.addEventListener('scroll', function () {
+			update();
+			// scrollend の無いブラウザ（古い Safari）では、スクロールが止まって少し経ったら止まったとみなす
+			if (!('onscrollend' in window)) {
+				clearTimeout(settle);
+				settle = setTimeout(settled, 160);
+			}
+		}, { passive: true });
+		list.addEventListener('scrollend', settled);
 		window.addEventListener('resize', update);
 		window.addEventListener('load', update);
 		update();

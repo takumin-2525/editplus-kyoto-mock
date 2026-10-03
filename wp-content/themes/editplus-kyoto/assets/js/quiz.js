@@ -9,8 +9,9 @@
  *   1. トップページ: #epQuiz があれば自動で起動する（5問）
  *   2. ホテルから探すページ: window.epQuizMount(el, { hotel: <ID> }) で起動する。
  *      出発地はそのホテルに決まっているので「どこから出発しますか？」は出さない（4問）
- *   3. 現在地から探すページ（/nearby/）: nearby.js が位置情報を取ってから
- *      window.epQuizMount(el, { origin: { lat, lng } }) で起動する（4問）
+ *   3. ホテル／いまいる場所から（/nearby/）: nearby.js が出発点を決めてから
+ *      window.epQuizMount(el, { origin: { lat, lng } }) か { hotel: <ID> }（提携していない宿のIDも）か
+ *      { station: <駅のキー> } で起動する（4問）
  *   4. 共有されたコース（/plan/<合言葉>/）: #epPlan の data-plan に入っているコースを
  *      そのまま描く（設問は出さない）。結果の組みを2つ持たないため、同じ renderResult を使う
  *
@@ -22,11 +23,13 @@
  *              wait_min（開店を待つ分数。15分以上のときだけ「開くまで約N分」と出す）
  *   コース全体 … ride_legs / walk_legs / travel_min（乗る区間・歩く区間の数、移動の合計）・map_kind（全体のルートを開けるか）
  * **これらが付く前に作られたコースも描けること。**共有されたコースは180日残り、診断のキャッシュにも古い形が残る。
- * 値が無いときは、無いなりに今までどおり描く（区切りもリンクも足さない）。訳はすべてここ（画面）でやる
- * ―― 共有されたコースは言語を持たないので、サーバーは言語に依らないコードで返す。
+ * 値が無いときは、無いなりに今までどおり描く（区切りもリンクも足さない）。手段・要約・ラベルの訳はここ（画面）でやる。
  *
- * 送る条件には設問の版（qv）を付ける。回答は番号で送るので、選択肢を途中に足すと、
- * 古い画面の番号が別の条件として読まれる。版を付けておけば、サーバーが古い番号を読み替えられる。
+ * 送る条件には設問の版（qv）と、ページの言語（lang）を付ける。
+ *   qv   … 回答は番号で送るので、選択肢を途中に足すと古い画面の番号が別の条件として読まれる。版があればサーバーが読み替えられる
+ *   lang … サーバーは店名・エリア・ジャンル・営業時間・AIの理由文・コース名・紹介文を、この言語で返す（2026-10-03〜）。
+ *          返事の lang がその言語。共有されたコースは作った言語で残る（/en/plan/<合言葉>/）。
+ *          lang を持たない古いコース（それ以前のもの）は、中身が日本語
  */
 (function () {
 	'use strict';
@@ -61,6 +64,21 @@
 	};
 	var modeLabel = function (code) { return t(MODES[code].label[0], MODES[code].label[1]); };
 
+	// 小さなアイコン（2026-10-03）。形の正は inc/icons.php で、functions.php が epIcons として渡す（ここに形を写さない）。
+	// 届かなかったときは何も出さない ―― 意味は隣の文字が持っているので、文字だけで読める
+	var ICONS = window.epIcons || {};
+	var icon = function (name) { return own(ICONS, name) || ''; };
+	// 区間の手段のアイコン。電車・バスの区間は、サーバーの見積もり（leg_kind: rail / bus）で電車かバスかを分ける。
+	// leg_kind を持たない古いコース（共有済み・キャッシュ）は電車の形にする（「電車・バス」の汎用の印）
+	var modeIcon = function (mode, kind) {
+		if (mode === 'walk') { return icon('walk'); }
+		if (mode === 'car') { return icon('car'); }
+		if (mode === 'transit') { return icon(kind === 'bus' ? 'bus' : 'train'); }
+		return '';
+	};
+	// アイコンと続く語を1つに結ぶ（折り返したときに、アイコンだけが行末に残らない）
+	var withIcon = function (svg, html) { return svg ? '<span class="ep-nb">' + svg + html + '</span>' : html; };
+
 	// サーバーのエラー文は日本語なので、そのまま出さずに合図（code）で訳を選ぶ。
 	// ここに無い合図（ホテルの座標が未設定、など運用側の不備）のときだけ、サーバーの文を出す
 	var ERRORS = {
@@ -70,7 +88,12 @@
 		invalid_answer:    ['errInvalidAnswer', '回答を読み取れませんでした。お手数ですが、最初からやり直してください。'],
 		geo_out_of_region: ['errGeoOutOfRegion', '現在地が対象エリアから離れているため、コースを作れません。'],
 		geo_invalid:       ['errGeoInvalid', '位置情報を読み取れませんでした。'],
-		empty_plan:        ['errEmptyPlan', 'コースを組み立てられませんでした。時間をおいて、もう一度お試しください。']
+		empty_plan:        ['errEmptyPlan', 'コースを組み立てられませんでした。時間をおいて、もう一度お試しください。'],
+		// 出発点にしたホテルが消えた・座標が無い（/nearby/?hotel= を古いリンクから開いたときなど）。サーバーの文は日本語なので訳を当てる
+		hotel_not_found:   ['errHotelNotFound', 'ホテルが見つかりませんでした。ホテル名か最寄り駅で探してください。'],
+		hotel_no_coords:   ['errHotelNoCoords', 'このホテルは位置情報がまだ登録されていないため、ここからは巡れません。ほかのホテルを選ぶか、下の探し方をお使いください。'],
+		hotel_out_of_region: ['errHotelOutOfRegion', 'この宿は対象エリアの外にあるため、コースを作れません。ほかの宿か駅を選んでください。'],
+		station_not_found: ['errStationNotFound', '駅が見つかりませんでした。駅の名前で探し直してください。']
 	};
 	var errorText = function (json) {
 		var known = json && own(ERRORS, json.code);
@@ -82,14 +105,22 @@
 	// 地図・行き方だけでなく、スポットのページ（s.url）と診断の入口（makeUrl）も同じ扱いにする
 	var httpUrl = function (url) { return /^https?:\/\//i.test(String(url || '')) ? String(url) : ''; };
 
-	// コース名・紹介文・店名・理由文は、どの言語のページでも日本語で返る（中身は訳さない設計）。
+	// コース名・紹介文・店名・理由文は、2026-10-03 からページの言語で返る。それでも日本語のまま出るものがある
+	// （訳の無い宿・ホテルの名前、数字の確かめに落ちて原文のまま出す営業時間、lang を持たない古い共有コースの中身）。
 	// 外国語のページは html の lang が en-US などなので、そのままだと文節で折る指定（style.css の :lang(ja)）が掛からず、
 	// 「定番名／所巡り」「コー／ス」と語の途中で折れる。日本語の中身にだけ lang="ja" を付ける。
 	// 日本語のページでは何も足さない（html がすでに ja。見た目もHTMLも変えない）。
-	// 仮名・漢字を含まない名前（「CAFE&GALLERY WAKU」）には付けない ―― 読み上げが英語の店名を日本語として読んでしまう
+	// 仮名・漢字を含まない名前（「CAFE&GALLERY WAKU」）には付けない ―― 読み上げが英語の店名を日本語として読んでしまう。
+	// 中国語のページでは、漢字だけの文は中国語として読む（仮名があるときだけ日本語）。漢字で判定したままだと、
+	// 中国語の中身が返るようになったいま、中国語の文にまで lang="ja" が付いて日本語の字形で出てしまう。
+	// 仮名から中黒（・）と長音（ー）は外す（中国語の「电车・巴士」にも出る記号）
 	var PAGE_JA = /^ja/i.test(document.documentElement.lang || '');
+	var PAGE_ZH = /^zh/i.test(document.documentElement.lang || '') || /^zh/.test(String(T.lang || ''));
 	var jaAttr = function (text) {
-		return (!PAGE_JA && /[\u3040-\u30ff\u3400-\u9fff]/.test(String(text || ''))) ? ' lang="ja"' : '';
+		var s = String(text || '');
+		if (PAGE_JA) { return ''; }
+		if (/[\u3040-\u309f\u30a0-\u30fa\u30fd-\u30ff]/.test(s)) { return ' lang="ja"'; }
+		return (!PAGE_ZH && /[\u3400-\u9fff]/.test(s)) ? ' lang="ja"' : '';
 	};
 
 	/**
@@ -113,8 +144,9 @@
 		var byIndex = (typeof plan.start_index === 'number') ? list[plan.start_index] : null;
 		if (byIndex && !byIndex.loose) { return named(byIndex.label || byIndex.ja); }
 		if (byName) { return named(''); } // 名前が「おまかせ」で、番号からも場所が分からない
-		// ホテルの名前など。訳は無いので、そのまま出す
-		return named(plan.start_label, true);
+		// ホテル・宿・駅の名前など。サーバーが結果の言語での名前（start_name）を持たせていればそれ、無ければ日本語の名前のまま。
+		// raw の印は「日本語かもしれない」の意味（外国語のページでは、仮名・漢字があれば lang="ja" を付ける）
+		return named(plan.start_name || plan.start_label, true);
 	};
 
 	/**
@@ -175,10 +207,14 @@
  * 診断UIを指定要素にマウントする。
  *
  * @param {HTMLElement} el      描画先。data-endpoint に REST の URL を持つこと。
- * @param {Object}      options { hotel: ホテルID } を渡すと、そのホテルが出発地になる。
+ * @param {Object}      options { hotel: ホテルID } を渡すと、そのホテルが出発地になる（提携していない宿のIDも受ける）。
+ *                              { station: 駅のキー } を渡すと、その駅が出発地になる（/nearby/ で駅を選んだとき）。
  *                              { origin: { lat, lng } } を渡すと、その座標（現在地）が出発地になる。
  *                              { plan: コース, makeUrl: 診断のURL } を渡すと、設問を出さずにそのコースを描く
  *                              （共有されたコースのページ）。
+ *                              restore（true / false）で、保存した結果を復元するかを呼び出し側が決められる。
+ *                              省略時は「戻る/進む」でページを開いたときだけ復元する。/nearby/ は1枚のページの中で
+ *                              出発点を何度も変える（「戻る」も同じページの中で起きる）ので、ページの開き方では決められない
  */
 function mount(el, options) {
 	options = options || {};
@@ -186,23 +222,81 @@ function mount(el, options) {
 	// 共有されたコースを見ているとき。設問・やり直し・予算の調整は出さない（条件を持っていないので組み直せない）
 	var shared = options.plan || null;
 	var hotelId = options.hotel ? String(options.hotel) : '';
-	var origin = (!hotelId && options.origin) ? options.origin : null;
+	// 駅のキーは英小文字・数字・ハイフンだけ（サーバーの表のキー）。ほかの形は送らない
+	var stationKey = (!hotelId && /^[a-z0-9-]{1,64}$/.test(String(options.station || ''))) ? String(options.station) : '';
+	var origin = (!hotelId && !stationKey && options.origin) ? options.origin : null;
 
-	// ホテル・現在地起点のときは出発地が決まっているので、その設問だけ落とす。
+	// ホテル・駅・現在地起点のときは出発地が決まっているので、その設問だけ落とす。
 	// key で送るので、設問を減らしてもサーバー側は既定値で補完してくれる
-	var QUESTIONS = (hotelId || origin)
+	var QUESTIONS = (hotelId || stationKey || origin)
 		? ALL_QUESTIONS.filter(function (q) { return q.key !== 'start'; })
 		: ALL_QUESTIONS.slice();
 
 	var answers = QUESTIONS.map(function () { return null; });
 	var step = 0;
 	var busy = false;
+	var advance = null;  // 選んでから次の設問へ進むまでのタイマー。「← 戻る」で取り消す
+	var sending = false; // 送信中。予算チップの二度押しを止める（ボタンは disabled にしない ―― フォーカスが body に落ちる）
 	var lastReq = null; // 直前に送った条件。予算チップはこれを予算だけ変えて送り直す
+
+	// この起動の印。/nearby/ は同じ要素で出発点を変えるたびに起動し直す（innerHTML を空にしてから epQuizMount）。
+	// 前の起動の送信が後から届くと、新しい出発点の設問を前の出発点のコースで上書きしていた（BUGS #21）。
+	// 届いた返事は、印が今の起動のものと同じで、要素がまだ中身を持っているときだけ描く
+	// （nearby.js の「出発点を選ぶ前に戻す」は起動し直さずに中身だけ空にする）
+	var token = {};
+	el._epQuizMount = token;
+	function alive() { return el._epQuizMount === token && !!el.firstChild; }
+
+	/*
+	 * 描き直したあとの「見える位置」と「フォーカス」（2026-10-03）。
+	 * 以前は quiz.js のどこにも scrollTo・focus が無かった。予算チップを押すと結果の高さが消えて
+	 * 「おすすめの場所」より下が映り、結果が出てもコース名は画面の外（PC -981px、スマホ -4756px）に残った（BUGS #1）。
+	 * フォーカスも押したボタンごと消えて body に落ち、読み上げは新しい設問も結果も読まなかった（#27）。
+	 * 着地の高さは html の scroll-padding-top（固定ヘッダー＋16px。style.css）と同じ値を使う。アンカー・Tab と揃えるため
+	 */
+	// 文書の上端からの位置。getBoundingClientRect をそのまま使わないのは、結果が出るときに下から浮き上がる動き
+	// （.q-res の fadeup の translateY）があり、描いた直後に測ると10pxずれるため。
+	// el（動かない）の位置に、el の中での位置（offsetTop の和。transform を含まない）を足す
+	function pageY(node) {
+		var sum = function (n) { var y = 0; for (; n; n = n.offsetParent) { y += n.offsetTop; } return y; };
+		return el.getBoundingClientRect().top + window.pageYOffset + (sum(node) - sum(el));
+	}
+	function landOffset() {
+		var pad = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop);
+		if (pad > 0) { return pad; }
+		var hdr = document.querySelector('.site-header');
+		return (hdr ? hdr.getBoundingClientRect().bottom : 0) + 16;
+	}
+	/**
+	 * node が固定ヘッダーのすぐ下に来るよう動かす。
+	 * @param {boolean} force false なら、頭がヘッダーより下・画面の下4分の1より上に見えているときは動かさない
+	 *                        （設問を1つ進めるたびに数pxずつ動くと、かえって落ち着かない）
+	 */
+	function reveal(node, force) {
+		if (!node) { return; }
+		var off = landOffset();
+		var y = pageY(node);
+		var top = window.pageYOffset;
+		if (!force && y >= top + off && y <= top + window.innerHeight * 0.75) { return; }
+		window.scrollTo(0, Math.max(0, Math.round(y - off)));
+	}
+	// 見出しにフォーカスを移す（読み上げが新しい設問・結果を読む。次の Tab はその続きから）。
+	// 位置は reveal が決めるので、フォーカスでは動かさない
+	function focusOn(node) {
+		if (!node) { return; }
+		node.setAttribute('tabindex', '-1');
+		try { node.focus({ preventScroll: true }); } catch (e) { node.focus(); }
+	}
 
 	// 診断結果はsessionStorageに保存し、スポット閲覧から戻ってきても復元する
 	// （タブを閉じると自動で消える）。ホテルごとに別の保存先にする
-	// 現在地は1つの保存先。「戻る」以外で開き直したら下の初期表示で捨てるので、別の場所の結果は出ない
-	var STORAGE_KEY = hotelId ? 'epQuizResult_h' + hotelId : (origin ? 'epQuizResult_geo' : 'epQuizResult');
+	// 現在地は1つの保存先。/nearby/ はページの中の「戻る」で、別々の場所の現在地を履歴に2つ持てる
+	// （現在地A → ホテル → 現在地B）。Bで作ったコースが、Aに戻ったときに出ないよう、
+	// 復元するときに作ったときの出発座標（保存した request の lat/lng）と比べる（→ 下の初期表示）
+	// 言語ごとに別の保存先にする（sessionStorage は /en/ と / で共有される。英語のページで作ったコースを、
+	// 日本語のページに「戻る」で英語のまま出さない）。日本語は今までの名前のまま
+	var STORAGE_KEY = (hotelId ? 'epQuizResult_h' + hotelId : (stationKey ? 'epQuizResult_s' + stationKey : (origin ? 'epQuizResult_geo' : 'epQuizResult')))
+		+ (T.lang && T.lang !== 'ja' ? '_' + T.lang : '');
 
 	// XSS対策: 動的な文字列は必ずこれを通してHTMLに入れる。
 	// 属性の値（href・aria-label）にも入れるので、引用符も逃がす。textContent → innerHTML が逃がすのは < > & だけで、
@@ -232,8 +326,9 @@ function mount(el, options) {
 		}).join('');
 	}
 
-	function renderQuestion() {
-		el.classList.remove('is-result');
+	/** @param {boolean} [user] 利用者の操作で描き直したとき true（ページを開いたときの1問目は位置もフォーカスも動かさない） */
+	function renderQuestion(user) {
+		el.classList.remove('is-result', 'is-busy');
 		var q = QUESTIONS[step];
 		var opts = q.options.map(function (label, i) {
 			var sel = answers[step] === i ? ' sel' : '';
@@ -253,11 +348,12 @@ function mount(el, options) {
 				busy = true;
 				answers[step] = parseInt(btn.getAttribute('data-i'), 10);
 				btn.classList.add('sel');
-				setTimeout(function () {
+				advance = setTimeout(function () {
+					advance = null;
 					busy = false;
 					step++;
 					if (step < QUESTIONS.length) {
-						renderQuestion();
+						renderQuestion(true);
 					} else {
 						submit();
 					}
@@ -267,27 +363,114 @@ function mount(el, options) {
 		var back = el.querySelector('.q-back');
 		if (back) {
 			back.addEventListener('click', function () {
-				if (step > 0) { step--; renderQuestion(); }
+				// 選んだ直後（次へ進むまでの0.2秒）に押されたら、予約した「次へ」を取り消してから戻る。
+				// 取り消さないと、いったん戻ったあとで予約が走り、元の設問へ進み直した（BUGS #29）
+				if (advance) { clearTimeout(advance); advance = null; busy = false; }
+				if (step > 0) { step--; renderQuestion(true); }
 			});
+		}
+		// スマホは選択肢が縦に5つ並ぶので、下の選択肢を押すと次の設問の頭が画面の上に出ていることがある
+		if (user) {
+			reveal(el.querySelector('.q-step'), false);
+			focusOn(el.querySelector('.q-title'));
 		}
 	}
 
 	function renderLoading() {
-		el.classList.remove('is-result');
+		el.classList.remove('is-result', 'is-busy');
 		el.innerHTML = '<div class="q-step">'
 			+ '<h3 class="q-title">' + esc(t('building', 'あなたのコースを組み立てています…')) + '</h3>'
 			+ '<div class="q-loading"><span></span><span></span><span></span></div>'
 			+ '<p class="q-note">' + esc(t('buildingNote', '京都観光コンシェルジュが厳選したスポットから、移動時間まで含めて選んでいます（10秒ほどかかることがあります）')) + '</p>'
 			+ '</div>';
+		// 押した選択肢は消えたので、フォーカスは見出しへ（読み上げが「組み立てています」を読む）
+		reveal(el.querySelector('.q-step'), false);
+		focusOn(el.querySelector('.q-title'));
 	}
 
-	function renderError(message) {
-		el.classList.remove('is-result');
+	/**
+	 * 失敗したときに「次の一手」として何をさせるか（BUGS #11）。
+	 * 以前は何が起きても「もう一度試す」＝最初からやり直し（answers・条件・保存した結果を全部捨てる）だった。
+	 *   resend … 同じ条件で送り直す（混雑・通信の失敗・サーバーの一時的な失敗。条件は悪くない）
+	 *   change … 該当する設問へ戻す（条件を変えてほしいエラー。ほかの答えは残す）
+	 *   reset  … 最初から（答えを読めなかった・現在地が使えない など、送り直しても同じ結果になるもの）
+	 */
+	var RETRY = {
+		rate_limited: 'resend', empty_plan: 'resend', net: 'resend',
+		walk_out_of_reach: 'change:transport', no_candidates: 'change:time'
+	};
+	function retryHow(code, status) {
+		var how = own(RETRY, code);
+		if (how) { return how; }
+		// 合図の無い失敗（中身が HTML の 500・504 など）は、サーバー側の一時的な不具合として送り直す
+		if (!code && (!status || status >= 500)) { return 'resend'; }
+		return 'reset';
+	}
+
+	function renderError(message, how) {
+		el.classList.remove('is-result', 'is-busy');
+		how = how || 'reset';
+		var change = how.indexOf('change:') === 0 ? how.slice(7) : '';
+		var at = -1;
+		QUESTIONS.forEach(function (q, i) { if (q.key === change) { at = i; } });
+		if (change && at < 0) { how = 'reset'; } // その設問を出していないページ（ありえないが、出せない設問へは戻さない）
+		var label = how === 'resend' ? t('retry', 'もう一度試す')
+			: (at >= 0 ? t('retryChange', '条件を変える') : t('startOver', 'もう一度診断する'));
 		el.innerHTML = '<div class="q-step">'
 			+ '<h3 class="q-title">' + esc(message || t('failed', '診断に失敗しました。')) + '</h3>'
-			+ '<div class="q-nav"><button type="button" class="q-next" id="qRetry">' + esc(t('retry', 'もう一度試す')) + '</button></div>'
+			+ '<div class="q-nav"><button type="button" class="q-next" id="qRetry">' + esc(label) + '</button></div>'
 			+ '</div>';
-		el.querySelector('#qRetry').addEventListener('click', reset);
+		el.querySelector('#qRetry').addEventListener('click', function () {
+			if (how === 'resend' && lastReq) { submit(lastReq.budget, true); return; }
+			if (at >= 0) { step = at; renderQuestion(true); return; }
+			reset();
+		});
+		reveal(el.querySelector('.q-step'), false);
+		focusOn(el.querySelector('.q-title'));
+	}
+
+	/**
+	 * 予算チップを押してから返事が来るまで。今のコースは消さずに薄くし、押したチップの隣に「組み立てています」を出す。
+	 *
+	 * 以前は読み込み表示（短い1枚）で結果を置き換えていた。結果の高さ（PC 1,800px・スマホ 3,000px）がその場で消え、
+	 * チップのあたりを見ていた人の画面には「おすすめの場所」や誌面・フッターが映った（BUGS #1）。
+	 * 置き換えなければページの高さは変わらず、目の前のチップの隣で待てる。失敗したときも今のコースが残る（#11）。
+	 * チップは disabled にしない（押したチップにあるフォーカスが body に落ちる）。二度押しは sending で止める
+	 */
+	function chipBusy(on, budget) {
+		el.classList.toggle('is-busy', on);
+		var box = el.querySelector('.r-budget');
+		if (!box) { return; }
+		// 失敗の文の「もう一度試す」から来たときは、押したボタンごと文を消すので、フォーカスをその予算のチップへ移す
+		var ae = document.activeElement;
+		var refocus = !!(ae && ae.closest && ae.closest('.b-err'));
+		Array.prototype.forEach.call(box.querySelectorAll('.b-status, .b-err'), function (n) { n.parentNode.removeChild(n); });
+		if (refocus) {
+			var chip = box.querySelector('.b-chip[data-budget="' + parseInt(budget, 10) + '"]') || box.querySelector('.b-chip');
+			if (chip) { chip.focus({ preventScroll: true }); }
+		}
+		Array.prototype.forEach.call(box.querySelectorAll('.b-chip'), function (b) {
+			if (on) { b.setAttribute('aria-disabled', 'true'); } else { b.removeAttribute('aria-disabled'); }
+		});
+		if (on) {
+			// フォーカスは押したチップに残るので、読み上げには role=status で知らせる
+			box.insertAdjacentHTML('beforeend', '<p class="b-status" role="status"><span class="q-loading" aria-hidden="true"><span></span><span></span><span></span></span>'
+				+ esc(t('building', 'あなたのコースを組み立てています…')) + '</p>');
+		}
+	}
+	/** 予算チップからの送信が失敗した。今のコースは残したまま、チップのすぐ下に理由と次の一手を出す */
+	function chipError(message, how) {
+		chipBusy(false);
+		var box = el.querySelector('.r-budget');
+		if (!box) { renderError(message, how); return; }
+		box.insertAdjacentHTML('beforeend', '<p class="b-err" role="alert">' + esc(message || t('failed', '診断に失敗しました。'))
+			+ (how === 'resend' ? ' <button type="button" class="b-retry">' + esc(t('retry', 'もう一度試す')) + '</button>' : '') + '</p>');
+		var again = box.querySelector('.b-retry');
+		if (again) {
+			again.addEventListener('click', function () {
+				if (lastReq) { submit(lastReq.budget, true); }
+			});
+		}
 	}
 
 	/** 「1.2km」のような表記に丸める（1km未満はm） */
@@ -304,6 +487,18 @@ function mount(el, options) {
 		url += (url.indexOf('?') === -1 ? '?' : '&') + 'include=' + ids.join(',') + '&per_page=' + ids.length
 			+ '&_embed=wp:featuredmedia&_fields=id,_links,_embedded';
 		fetch(url).then(function (r) { return r.ok ? r.json() : []; }).then(function (list) {
+			if (!alive()) { return; }
+			// 写真が載ると見出しが現れ、カードが1枚あたり46〜73px伸びる。読んでいるカードがその分だけ下へずれていた
+			// （スマホで3枚目を読んでいると119px。BUGS #8）。Chrome の「位置を保つ機能」は、伸びるのが読んでいるカードの中だと効かず、
+			// iPhone（WebKit）にはそもそも無い。載せる前に画面の上端にある要素の位置を覚え、載せたあとに同じ位置へ戻す
+			var hb = landOffset() - 16;
+			var mark = null;
+			var markTop = 0;
+			Array.prototype.some.call(el.querySelectorAll('.res-head, .rs-when, .rs-ph, .spot .in > *, .r-foot'), function (n) {
+				var r = n.getBoundingClientRect();
+				if (r.bottom > hb) { mark = n; markTop = r.top; return true; }
+				return false;
+			});
 			(list || []).forEach(function (p) {
 				var m = p._embedded && p._embedded['wp:featuredmedia'] && p._embedded['wp:featuredmedia'][0];
 				if (!m || !m.source_url) { return; }
@@ -324,6 +519,11 @@ function mount(el, options) {
 					h.querySelector('a').removeAttribute('tabindex');
 				}
 			});
+			// 覚えた要素が画面の中にあったときだけ戻す。結果より上を見ているとき（覚えた要素が画面の下の外）は、伸びるのも画面の外
+			if (mark && markTop < window.innerHeight) {
+				var moved = mark.getBoundingClientRect().top - markTop;
+				if (Math.abs(moved) >= 1) { window.scrollBy(0, moved); }
+			}
 		}).catch(function () { /* 写真が無くても行程は読める */ });
 	}
 
@@ -378,32 +578,242 @@ function mount(el, options) {
 		return data._saving;
 	}
 
-	/**
-	 * 印刷・PDFではコースだけを出す。
-	 *
-	 * コースから body までの親に印を付け、style.css の @media print が「印の付いていない兄弟」を消す。
-	 * コースを複製して別の場所に置く作りにしないのは、複製した写真が読み込み終わる前に印刷が始まると抜けるため。
+	/*
+	 * ---- 紙・PDFの行程表（2026-10-03 作り直し） ----
+	 * 以前は画面のカード（3列の箱・写真・「乗換案内を見る」のリンク・丸い札）をそのまま紙に流していた。
+	 * 紙では押せないリンクが並び、ウェブの部品が箱のまま残って「画面を印刷しただけ」に見えた。
+	 * 紙のためだけの組み（左に時刻、右に立ち寄り先の2段組み）を印刷の直前に組んで body の末尾に置き、終わったら消す。
+	 * 画面のカードを組み替えないのは、画面の描画（renderResult）に紙の都合を混ぜないため。
+	 * 見た目は assets/css/print.css（media="print"）。画面では hidden のままなので、画面の見た目は変わらない。
 	 */
-	function preparePrint() {
-		clearPrint();
-		var res = el.querySelector('.q-res');
-		if (!res) { return; }
-		res.classList.add('ep-print-target');
-		for (var node = el; node && node !== document.documentElement; node = node.parentNode) {
-			node.classList.add('ep-print-path');
+
+	/**
+	 * このコースのページを開くQRを、SVG で返す（作れないときは空）。
+	 *
+	 * URLには合言葉が入っているので、外のサービス（QRの画像を返すAPI）には送らず手元で作る
+	 * （assets/js/vendor/qrcode.min.js。許諾と作り方は同じフォルダの README.md）。
+	 * 画像ではなく SVG にするのは、PDF にしても印刷しても角がにじまないため（読み取りの確実さに効く）。
+	 * 訂正の強さは M（約15%）。紙の折れ・汚れに耐え、62文字までのURL（/zh-tw/plan/… を含む今のドメイン）なら 33×33 に収まる
+	 * （2026-10-03 実測。72dpi に落とした画像からも読めた）。
+	 */
+	function qrSvg(text) {
+		if (!text || !window.epQRCode) { return ''; }
+		var qr;
+		try { qr = window.epQRCode.create(text, { errorCorrectionLevel: 'M' }); } catch (e) { return ''; }
+		var n = qr.modules.size;
+		var cells = qr.modules.data;
+		var quiet = 4; // 周りの余白（読み取りに必要な白。規格で4マス）
+		var d = '';
+		for (var y = 0; y < n; y++) {
+			// 横に続く黒は1本の矩形にまとめる（マスごとに書くと、PDFの中で数百の小さな図形になる）
+			for (var x = 0; x < n; x++) {
+				if (!cells[y * n + x]) { continue; }
+				var run = 1;
+				while (x + run < n && cells[y * n + x + run]) { run++; }
+				d += 'M' + (x + quiet) + ' ' + (y + quiet) + 'h' + run + 'v1h-' + run + 'z';
+				x += run - 1;
+			}
 		}
+		var size = n + quiet * 2;
+		return '<svg class="ps-qr" viewBox="0 0 ' + size + ' ' + size + '" shape-rendering="crispEdges" aria-hidden="true"><path d="' + d + '"/></svg>';
+	}
+
+	/**
+	 * 紙・PDFの行程表のHTML。
+	 *
+	 * 中身は画面と同じ値だけを使う（時刻・移動・営業時間はサーバーが決めた値。紙のために足さない）。
+	 * 画面と違うのは、押せないもの（行き方のリンク・予算・共有）を出さないことと、
+	 * 代わりにこのコースのページを開くQRを末尾に置くこと（地図と乗換案内はスマートフォンで開いてもらう）。
+	 * 店名・コース名・営業時間は、サーバーが返した言語のまま（2026-10-03〜ページの言語で返る）。
+	 * 日本語のまま来た部分（訳の無い宿の名前・確かめに落ちた営業時間・古い共有コース）にだけ、外国語のページで lang="ja" を付ける。
+	 */
+	function printSheet(data) {
+		var plan = data.plan || {};
+		var spots = data.spots || [];
+		var ja = PAGE_JA;
+		var gap = ja ? '' : ' ';
+		var dot = ja ? '・' : ' · ';
+		// 中国語の時間の幅は全角の「～」（スポットの営業時間の表示と同じ。2026-10-03 手直し 2巡目）
+		var range = ja ? '〜' : (PAGE_ZH ? '～' : '–');
+		var start = startName(plan);
+		// 「%s発」に出発地の名前を入れる。訳の無い名前（ホテル名）は名前だけを lang="ja" で包む（renderResult と同じ扱い）
+		var withOrigin = function (template) {
+			var name = esc(start.text);
+			var attr = start.raw ? jaAttr(start.text) : '';
+			if (attr) { name = '<span' + attr + '>' + name + '</span>'; }
+			return esc(template).replace(/%[ds]/, function () { return name; });
+		};
+		// 日本語のまま来た中身（営業時間の原文・古い共有コースなど）を、外国語のページでも日本語として組ませる（それ以外は何も付かない）
+		var jaText = function (text) { return '<span' + jaAttr(text) + '>' + esc(text) + '</span>'; };
+
+		// 1行の要約（「四条河原町発　09:30〜16:14　電車・バス3回＋徒歩3区間」）。
+		// 乗り物の数え方は renderResult の要約と同じ決め方（選んだ答えではなく、コースの中身を書く）。変えるときは両方
+		var sum = [];
+		if (start.text) { sum.push(withOrigin(t('fromLabel', '%s発'))); }
+		if (plan.begin) { sum.push(esc(plan.begin) + (plan.end ? range + esc(plan.end) : '')); }
+		var rides = (typeof plan.ride_legs === 'number') ? plan.ride_legs : null;
+		if (rides !== null) {
+			var walks = parseInt(plan.walk_legs, 10) || 0;
+			if (rides > 0) {
+				var rideMode = plan.transport === 'car' ? 'car' : 'transit';
+				spots.some(function (s) {
+					var m = modeCode(s.leg_mode, s.travel_by);
+					if (m && m !== 'walk') { rideMode = m; return true; }
+					return false;
+				});
+				var sumKey = rideMode === 'car' ? 'sumCar' : 'sumTransit';
+				var rideName = MODES[rideMode].label[1];
+				sum.push(esc(walks > 0
+					? fmt2(t(sumKey, rideName + '%1$d回＋徒歩%2$d区間'), rides, walks)
+					: fmt(t(sumKey + 'Only', rideName + '%d回'), rides)));
+			} else {
+				sum.push(esc(t('sumWalk', '歩いて回れるコース')));
+			}
+		} else if (plan.transport_label) {
+			var chosen = modeCode(plan.transport, plan.transport_label);
+			sum.push(esc(chosen ? modeLabel(chosen) : plan.transport_label));
+		}
+
+		var rows = [];
+		// 出発の行。行程表は「何時にどこを出るか」から始める（ホテルのデスクで渡される行程と同じ）。
+		// 出発地の名前が分からない（おまかせ）か、時刻を持たない古いコースでは置かない
+		var startRow = !!(start.text && plan.begin);
+		if (startRow) {
+			rows.push('<li class="ps-row ps-row--start"><div class="ps-stop">'
+				+ '<p class="ps-time"><b>' + esc(plan.begin) + '</b></p>'
+				+ '<div class="ps-body"><p class="ps-depart">' + withOrigin(t('fromLabel', '%s発')) + '</p></div>'
+				+ '</div></li>');
+		}
+		var prevZone = null;
+		spots.forEach(function (s, i) {
+			// ひとつ前の場所からの移動（「徒歩9分・553m」「電車・バス16分・2.4km」）と、開店を待つ時間
+			var mode = modeCode(s.leg_mode, s.travel_by);
+			var by = mode ? modeLabel(mode) : (s.travel_by || t('travel', '移動'));
+			var leg = [];
+			if (s.travel_min) {
+				var from = (i === 0 && !startRow && start.text) ? withOrigin(t('legFrom', '%sから')) + gap : '';
+				leg.push(from + esc(by) + gap + esc(fmt(t('minutes', '%d分'), s.travel_min))
+					+ (s.distance_m ? dot + esc(distLabel(s.distance_m)) : ''));
+			}
+			var wait = waitMinutes(s.wait_min);
+			if (wait) { leg.push(esc(fmt(t('waitOpen', '開くまで約%d分'), wait))); }
+			// エリア（歩いて回れるひとかたまり）が替わる所は、札を立てずに余白で区切る（CSS の .ps-row--zone）
+			var zone = (typeof s.zone === 'number') ? s.zone : null;
+			var newZone = i > 0 && zone !== null && prevZone !== null && zone !== prevZone;
+			prevZone = zone;
+			var time = s.arrive
+				? '<b>' + esc(s.arrive) + '</b>' + (s.leave ? '<small>' + range + esc(s.leave) + '</small>' : '')
+				: '<b>' + (i + 1) + '</b>';
+			var meta = [s.area, s.cat].filter(Boolean).map(jaText);
+			if (s.stay_min) { meta.push(esc(fmt(t('stayMin', '滞在%d分'), s.stay_min))); }
+			// 営業時間・定休日・最寄り駅（画面と同じ値。判断材料は隠さない。外国語では数字を確かめた訳、落ちたものは原文）
+			var facts = [];
+			var fact = function (key, label, value) {
+				if (value) { facts.push('<span class="ps-fact"><span class="ps-label">' + esc(t(key, label)) + '</span>' + jaText(value) + '</span>'); }
+			};
+			fact('hoursLabel', '営業時間', s.hours);
+			fact('holidayLabel', '定休日', s.holiday);
+			fact('stationLabel', '最寄り駅', s.station);
+
+			rows.push('<li class="ps-row' + (newZone ? ' ps-row--zone' : '') + '">'
+				+ (leg.length ? '<p class="ps-leg">' + leg.join('<span class="ps-gap"></span>') + '</p>' : '')
+				+ '<div class="ps-stop">'
+				+ '<p class="ps-time">' + time + '</p>'
+				+ '<div class="ps-body">'
+				+ '<h2 class="ps-name"' + jaAttr(s.title) + '>' + nameHtml(s.title) + '</h2>'
+				+ (s.reason ? '<p class="ps-reason"' + jaAttr(s.reason) + '>' + esc(s.reason) + '</p>' : '')
+				+ (meta.length ? '<p class="ps-meta">' + meta.map(function (m) { return '<span>' + m + '</span>'; }).join('') + '</p>' : '')
+				+ (facts.length ? '<p class="ps-facts">' + facts.join('') + '</p>' : '')
+				+ '</div></div></li>');
+		});
+
+		// 満たせなかった条件のうち、当日の予定に響くもの（食事が無い・営業時間の外かもしれない）。画面と同じく紙にも出す
+		var relaxed = Array.isArray(data.relaxed) ? data.relaxed : [];
+		var flags = [];
+		if (relaxed.indexOf('eat') !== -1) { flags.push(t('noMealNote', '※ この条件では合う食事処が見つからず、このコースに食事は入っていません')); }
+		if (relaxed.indexOf('hours') !== -1) { flags.push(t('hoursNote', '※ 営業時間の合う店が少なく、着く時刻が営業時間の外になる場所があるかもしれません')); }
+
+		// 末尾: このコースのページを開くQR。URLの文字はQRが読めないとき用に小さく1行だけ。
+		// 合言葉の無い古い結果（URLを作れない）では、QRもURLも出さない
+		var url = planUrl(data);
+		var qr = qrSvg(url);
+		// 作成日は印刷した日（この紙がいつの情報かを示す）。書き方はページの言語に任せる
+		var made = '';
+		try {
+			made = new Date().toLocaleDateString(document.documentElement.lang || 'ja', { year: 'numeric', month: 'long', day: 'numeric' });
+		} catch (e) { made = ''; }
+
+		return '<div class="ps-head">'
+			+ (T.siteName ? '<p class="ps-site">' + esc(T.siteName) + '</p>' : '')
+			+ '<p class="ps-kind">' + esc(t('printKind', 'モデルコースのご案内')) + '</p>'
+			+ '</div>'
+			+ '<h1 class="ps-title"' + jaAttr(data.title) + '>' + esc(data.title) + '</h1>'
+			+ (data.description ? '<p class="ps-desc"' + jaAttr(data.description) + '>' + esc(data.description) + '</p>' : '')
+			+ (sum.length ? '<p class="ps-sum">' + sum.map(function (x) { return '<span>' + x + '</span>'; }).join('') + '</p>' : '')
+			+ '<ol class="ps-list">' + rows.join('') + '</ol>'
+			+ (flags.length ? '<p class="ps-flag">' + flags.map(esc).join('<br>') + '</p>' : '')
+			+ '<div class="ps-foot' + (qr ? '' : ' ps-foot--noqr') + '">'
+			+ '<div class="ps-foot-text">'
+			+ (qr ? '<p class="ps-qr-lead">' + esc(t('printQrLead', 'スマートフォンで地図と乗換案内を開けます')) + '</p>'
+				+ '<p class="ps-url">' + esc(url) + '</p>' : '')
+			+ '<p class="ps-note">' + esc(t('printNote', '時刻は移動時間からの目安です。営業時間・定休日は公式情報でご確認ください。')) + '</p>'
+			+ (made ? '<p class="ps-made">' + esc(fmt(t('printMade', '%s 作成'), made)) + '</p>' : '')
+			+ '</div>'
+			+ qr
+			+ '</div>';
+	}
+
+	/**
+	 * 印刷・PDFの直前に、行程表を組んで置く。
+	 *
+	 * 置き場所は body の末尾。print.css が html.ep-print-plan のあいだだけ「body の直下でこれ以外」を消す。
+	 * 画面ではずっと hidden（印刷のダイアログが開いているあいだも、画面の見た目は変わらない）。
+	 */
+	var printScrollY = null; // 印刷の直前に見ていた位置。afterPrint で戻す
+	function preparePrint(data) {
+		clearPrint();
+		// 紙のときは本文を消すので、文書が1〜2ページ分の高さになる。PC の Chrome はスクロール位置をその高さまで縮め、
+		// 印刷が終わっても戻さない（結果の下の方で押すと、トップのヒーローまで飛んでいた）。縮められる前の位置を覚えておく。
+		// beforeprint ではなくここで覚えるのは、ボタン（ここ → window.print）と共有ページの beforeprint の両方を1か所で通すため
+		printScrollY = window.pageYOffset;
+		if (!data || !data.spots || !data.spots.length) { return; }
+		var sheet = document.createElement('div');
+		sheet.className = 'ep-sheet';
+		sheet.hidden = true;
+		sheet.innerHTML = printSheet(data);
+		document.body.appendChild(sheet);
 		document.documentElement.classList.add('ep-print-plan');
 	}
 	function clearPrint() {
 		document.documentElement.classList.remove('ep-print-plan');
-		Array.prototype.forEach.call(document.querySelectorAll('.ep-print-path, .ep-print-target'), function (node) {
-			node.classList.remove('ep-print-path', 'ep-print-target');
+		Array.prototype.forEach.call(document.querySelectorAll('.ep-sheet'), function (node) {
+			node.parentNode.removeChild(node);
 		});
 	}
-	window.addEventListener('afterprint', clearPrint);
-	// 共有されたコースのページは、ブラウザのメニューから印刷してもコースだけにする（このページの中身はコースだけ）。
+	/**
+	 * 印刷が終わったあとの後始末。行程表を外し、印刷の前に見ていた位置と見た目へ戻す。
+	 *
+	 * 戻す処理を clearPrint に入れないのは、clearPrint が preparePrint の冒頭でも呼ばれるため（印刷の前に位置を動かしてしまう）。
+	 * スマホは位置が縮められないので、同じ位置への空振りになる。
+	 */
+	function afterPrint() {
+		clearPrint();
+		if (printScrollY === null) { return; }
+		var y = printScrollY;
+		printScrollY = null;
+		// 紙のときに display:none にした結果は、画面に戻ると入場の動き（style.css の fadeup）を最初からやり直す。
+		// 印刷のたびにカードが透けて出直すので、終わった形にそろえる（読み込み中の点 qdot は終わりの無い動きなので触らない）
+		if (document.getAnimations) {
+			document.getAnimations().forEach(function (anim) {
+				if (anim.animationName === 'fadeup') { anim.finish(); }
+			});
+		}
+		if (Math.round(window.pageYOffset) !== Math.round(y)) { window.scrollTo(window.pageXOffset, y); }
+	}
+	window.addEventListener('afterprint', afterPrint);
+	// 共有されたコースのページは、ブラウザのメニューから印刷しても同じ行程表にする（このページの中身はコースだけ）。
 	// 診断のあるトップページなどでは、ボタンを押したときだけ
-	if (shared) { window.addEventListener('beforeprint', preparePrint); }
+	if (shared) { window.addEventListener('beforeprint', function () { preparePrint(shared); }); }
 
 	/** 「このコースを残す」のボタンに動きを付ける。 */
 	function bindKeep(data) {
@@ -426,14 +836,12 @@ function mount(el, options) {
 			btn.addEventListener('click', function () {
 				var act = btn.getAttribute('data-act');
 				if (act === 'print') {
-					// 紙・PDFにもコースのURLを載せる（そこからコースに戻れる）。載せる以上、開けるように残しておく。
+					// 紙・PDFには、このコースのページを開くQRを載せる（printSheet）。載せる以上、開けるように残しておく。
 					// 返事は待たずに開く。待ってから開くと「このページが印刷しようとしています」と確認が出る端末がある
-					var printUrl = planUrl(data);
-					if (printUrl) {
-						el.querySelector('.res-print-url').textContent = printUrl;
+					if (planUrl(data)) {
 						persist(data).catch(function () { /* 残せなくても印刷は止めない */ });
 					}
-					preparePrint();
+					preparePrint(data);
 					window.print();
 					return;
 				}
@@ -478,11 +886,20 @@ function mount(el, options) {
 		});
 	}
 
-	function renderResult(data) {
+	/**
+	 * @param {Object}  data 診断の返事（または保存・共有されたコース）。
+	 * @param {boolean} [user] 利用者の操作（回答・予算チップ・送り直し）で出したとき true。
+	 *                         コース名を固定ヘッダーのすぐ下へ着地させ、フォーカスも移す。
+	 *                         「戻る」での復元・共有されたコースでは、ブラウザが戻す位置を動かさない
+	 */
+	function renderResult(data, user) {
 		// 'cache' で返ってくる場合もあるので「ai以外は編集部セレクト」で判定する。
 		// source === 'fallback' だけを見ると、キャッシュ済みのフォールバックに
 		// 「Your Route」のバッジが付き、本文の「編集部の定番スポットで組みました」と矛盾する
-		var badge = data.source === 'ai' ? t('badgeRoute', 'コンシェルジュの提案') : t('badgePick', '編集部のおすすめ');
+		// バッジは「誰が選んだか」（made_by）で決める。source はキャッシュから返すと 'cache' になり、共有したコースでは外れるため、
+		// 同じAIのコースが2回目から「編集部のおすすめ」になっていた（2026-10-03 テスト）。made_by の無い古い結果は source で見る
+		var by = data.made_by || data.source;
+		var badge = by === 'ai' ? t('badgeRoute', 'コンシェルジュの提案') : t('badgePick', '編集部のおすすめ');
 		var plan = data.plan || {};
 		// 数字まわりの約物は言語で変える。日本語は「徒歩8分」「4スポット」と詰め、区切りは「・」、時間の幅は「〜」。
 		// 間に半角の空白や「–」を入れると、欧文の作法で機械が組んだ表記に見える
@@ -490,7 +907,8 @@ function mount(el, options) {
 		var gap = ja ? '' : ' ';
 		var dot = ja ? '・' : ' · ';
 		var dotEnd = ja ? '・' : ' ·'; // 項目の末尾に付けるとき（後ろの空白は項目の間に置く）
-		var range = ja ? '〜' : '–';
+		// 中国語の時間の幅は全角の「～」（スポットの営業時間の表示と同じ。2026-10-03 手直し 2巡目）
+		var range = ja ? '〜' : (PAGE_ZH ? '～' : '–');
 
 		// トップページの棚と同じ組み：時刻を上に置いた、トップと同じスポットのカード（.spot）の列。
 		// 写真は後から載せる（loadPhotos）。載るまでは、トップと同じ「名前の面」で受ける
@@ -523,12 +941,13 @@ function mount(el, options) {
 			// 移動の無いカード（同じ建物の次の店）でも、待ちだけは出す
 			var wait = waitMinutes(s.wait_min);
 			var waitNote = wait
-				? '<span class="rs-wait">' + esc(fmt(t('waitOpen', '開くまで約%d分'), wait)) + '</span>'
+				? '<span class="rs-wait">' + withIcon(icon('clock'), esc(fmt(t('waitOpen', '開くまで約%d分'), wait))) + '</span>'
 				: '';
 			var leg = '';
 			if (s.travel_min) {
+				// 手段の名前の前に、手段のアイコン（徒歩＝歩く人、電車・バス＝電車かバス、タクシー・車＝車）。文字は今のまま
 				leg = '<span class="rs-leg' + (mode && mode !== 'walk' ? ' rs-leg--ride' : '') + '">' + from
-					+ '<span class="rs-by">' + esc(by) + gap + esc(fmt(t('minutes', '%d分'), s.travel_min))
+					+ '<span class="rs-by">' + withIcon(modeIcon(mode, s.leg_kind), esc(by)) + gap + esc(fmt(t('minutes', '%d分'), s.travel_min))
 					+ (s.distance_m ? dot + esc(distLabel(s.distance_m)) : '') + '</span>' + waitNote + '</span>';
 			} else if (waitNote) {
 				leg = '<span class="rs-leg rs-leg--wait">' + waitNote + '</span>';
@@ -544,16 +963,20 @@ function mount(el, options) {
 				? '<b>' + esc(s.arrive) + '</b>' + (s.leave ? '<small>' + range + esc(s.leave) + '</small>' : '')
 				: '<b>' + (i + 1) + '</b>';
 			// トップのカードと同じ「エリア｜ジャンル」の1行
-			var cat = [s.area, s.cat].filter(Boolean).map(esc).join('｜');
+			// 区切りは言語ごと（全角の ｜ は日本語・中国語だけ。欧文・韓国語は「 | 」。2026-10-03）
+			var cat = [s.area, s.cat].filter(Boolean).map(esc).join(esc(t('catSep', '｜')));
 
 			// 営業時間・定休日は誌面の原文をそのまま出す。
 			// 診断は日付を聞いていないので「その日開いているか」は保証できない。
 			// 保証しないと決めた以上、判断材料は隠さずに出す
+			// 行の頭に小さなアイコン（営業時間＝時計、定休日＝暦、最寄り駅＝電車）。ラベルの文字は残す（読み上げと意味のため）
 			var facts = [];
-			if (s.hours) facts.push(esc(t('hoursLabel', '営業時間')) + ' ' + esc(s.hours));
-			if (s.holiday) facts.push(esc(t('holidayLabel', '定休日')) + ' ' + esc(s.holiday));
+			// 値は結果の言語の訳（数字を確かめたもの）。確かめに落ちた欄は日本語の原文のまま来るので、そこにだけ lang="ja" が付く
+			var factText = function (v) { return '<span' + jaAttr(v) + '>' + esc(v) + '</span>'; };
+			if (s.hours) facts.push(withIcon(icon('clock'), esc(t('hoursLabel', '営業時間'))) + ' ' + factText(s.hours));
+			if (s.holiday) facts.push(withIcon(icon('calendar'), esc(t('holidayLabel', '定休日'))) + ' ' + factText(s.holiday));
 			// 最寄りの駅・バス停も誌面の原文。どの駅で降りるかの手掛かりになる
-			if (s.station) facts.push(esc(t('stationLabel', '最寄り駅')) + ' ' + esc(s.station));
+			if (s.station) facts.push(withIcon(icon('train'), esc(t('stationLabel', '最寄り駅'))) + ' ' + factText(s.station));
 
 			// カードの下のリンクは1つだけ。ひとつ前の場所からここまでの行き方（乗る区間は乗換案内、歩く区間は道順）を開く。
 			// 行き方の画面には行き先のピンも出るので、「地図で見る」（ピンだけ）とは並べない
@@ -564,9 +987,10 @@ function mount(el, options) {
 			if (legUrl) {
 				var linkText = t(MODES[mode].link[0], MODES[mode].link[1]);
 				// 同じ文言のリンクがカードの数だけ並ぶので、読み上げでは行き先の名前を添える
-				acts.push('<a href="' + esc(legUrl) + '" target="_blank" rel="noopener" aria-label="' + esc(linkText + ' — ' + s.title) + '">' + esc(linkText) + '</a>');
+				// 行き方のリンクは地図のピン。開くのは地図（Googleマップ）で、手段はすぐ上の区間の行がアイコンで示している
+				acts.push('<a href="' + esc(legUrl) + '" target="_blank" rel="noopener" aria-label="' + esc(linkText + ' — ' + s.title) + '">' + withIcon(icon('pin'), esc(linkText)) + '</a>');
 			} else if (pinUrl) {
-				acts.push('<a href="' + esc(pinUrl) + '" target="_blank" rel="noopener">' + esc(t('viewMap', '地図で見る')) + '</a>');
+				acts.push('<a href="' + esc(pinUrl) + '" target="_blank" rel="noopener">' + withIcon(icon('pin'), esc(t('viewMap', '地図で見る'))) + '</a>');
 			}
 			if (s.stay_min) acts.push('<span>' + esc(fmt(t('stayMin', '滞在%d分'), s.stay_min)) + '</span>');
 			// スポットのページへのリンク。http(s) でなければ href を付けない（名前は出すが、押せない）
@@ -597,6 +1021,7 @@ function mount(el, options) {
 		if (rides !== null) {
 			var walks = parseInt(plan.walk_legs, 10) || 0;
 			var summary;
+			var sumIcons = ''; // 要約の頭に、使う手段のアイコンを乗る順に（電車・バス・車 → 徒歩）
 			if (rides > 0) {
 				// 乗り物の名前は、選んだ手段ではなく実際に乗る区間から決める
 				var rideMode = plan.transport === 'car' ? 'car' : 'transit';
@@ -610,15 +1035,26 @@ function mount(el, options) {
 				summary = walks > 0
 					? fmt2(t(sumKey, rideName + '%1$d回＋徒歩%2$d区間'), rides, walks)
 					: fmt(t(sumKey + 'Only', rideName + '%d回'), rides);
+				// 電車・バスのコースは、実際に乗る区間の見積もり（電車・バス）を出てきた順に。両方あれば両方
+				var seen = {};
+				spots.forEach(function (s) {
+					var m = modeCode(s.leg_mode, s.travel_by);
+					if (!m || m === 'walk') { return; }
+					var svg = modeIcon(m, s.leg_kind);
+					var key = m === 'transit' ? (s.leg_kind === 'bus' ? 'bus' : 'train') : m;
+					if (svg && !seen[key]) { seen[key] = true; sumIcons += svg; }
+				});
+				if (walks > 0) { sumIcons += icon('walk'); }
 			} else {
 				summary = t('sumWalk', '歩いて回れるコース');
+				sumIcons = icon('walk');
 			}
-			stats.push('<span>' + esc(summary) + '</span>');
+			stats.push('<span class="res-sum">' + withIcon(sumIcons, esc(summary)) + '</span>');
 			if (plan.travel_min) stats.push('<span>' + esc(fmt(t('travelTotal', '移動は計%d分'), plan.travel_min)) + '</span>');
 		} else if (plan.transport_label) {
 			// 乗る区間の数を持たない古いコース。選んだ手段の名前を（訳せるものは訳して）そのまま出す
 			var chosen = modeCode(plan.transport, plan.transport_label);
-			stats.push('<span>' + esc(chosen ? modeLabel(chosen) : plan.transport_label) + '</span>');
+			stats.push('<span class="res-sum">' + withIcon(modeIcon(chosen, ''), esc(chosen ? modeLabel(chosen) : plan.transport_label)) + '</span>');
 		}
 		if (plan.begin) stats.push('<span>' + esc(plan.begin) + range + esc(plan.end) + '</span>');
 		if (plan.total_min) stats.push('<span>' + esc(roughHours(plan.total_min)) + '</span>');
@@ -708,6 +1144,7 @@ function mount(el, options) {
 			? '<a class="r-reset" href="' + esc(httpUrl(options.makeUrl) || '/') + '">' + esc(t('makeOwn', '自分のコースを作る')) + '</a>'
 			: '<button type="button" class="r-reset" id="qReset">' + esc(t('startOver', 'もう一度診断する')) + '</button>';
 
+		el.classList.remove('is-busy');
 		el.classList.add('is-result');
 		el.innerHTML = '<div class="q-res">'
 			+ (T.siteName ? '<p class="res-print-site">' + esc(T.siteName) + '</p>' : '')
@@ -732,9 +1169,17 @@ function mount(el, options) {
 		if (resetBtn) { resetBtn.addEventListener('click', reset); }
 		Array.prototype.forEach.call(el.querySelectorAll('.b-chip'), function (btn) {
 			btn.addEventListener('click', function () {
+				if (sending) { return; }
 				submit(parseInt(btn.getAttribute('data-budget'), 10));
 			});
 		});
+
+		// 新しいコースはコース名から読む。予算チップのときは押した位置（結果の下端）から、1,000〜4,000px 上へ戻ることになる。
+		// 描き直した瞬間に一度で動かす（なめらかに流すと、入れ替わった中身の上を滑っていくだけで何も読めない）
+		if (user) {
+			reveal(el.querySelector('.res-head'), true);
+			focusOn(el.querySelector('.res-title'));
+		}
 	}
 
 	function reset() {
@@ -742,17 +1187,23 @@ function mount(el, options) {
 		answers = QUESTIONS.map(function () { return null; });
 		lastReq = null;
 		step = 0;
-		renderQuestion();
+		renderQuestion(true);
 	}
 
 	/**
-	 * @param {number} [budget] 予算の帯（1〜3）。結果画面の調整チップから渡される。
-	 *                          設問では聞かない（→ 30_要件定義/食事と予算_プラン設計 §5.5）
+	 * @param {number}  [budget] 予算の帯（1〜3）。結果画面の調整チップから渡される。
+	 *                           設問では聞かない（→ 30_要件定義/食事と予算_プラン設計 §5.5）
+	 * @param {boolean} [again]  直前の条件（lastReq）をそのまま送り直す（失敗したあとの「もう一度試す」）
 	 */
-	function submit(budget) {
-		renderLoading();
+	function submit(budget, again) {
+		// 結果を出している最中の予算チップ（と、その失敗からの送り直し）は、結果を消さずに待つ（→ chipBusy）
+		var onResult = !!(budget && lastReq && el.querySelector('.q-res'));
+		if (onResult) { chipBusy(true, budget); } else { renderLoading(); }
+		sending = true;
 		var payload;
-		if (budget && lastReq) {
+		if (again && lastReq) {
+			payload = JSON.parse(JSON.stringify(lastReq));
+		} else if (budget && lastReq) {
 			// 予算チップ: 条件は直前のまま、予算だけ変える。
 			// answers から組み直すと、「戻る」で結果を復元したとき（answers は空）に条件が消える
 			payload = JSON.parse(JSON.stringify(lastReq));
@@ -765,10 +1216,14 @@ function mount(el, options) {
 			QUESTIONS.forEach(function (q, i) { payload[q.key] = answers[i]; });
 			// 出発地はホテル・現在地の座標で決まる（start の設問は出していない）
 			if (hotelId) { payload.hotel = parseInt(hotelId, 10); }
+			if (stationKey) { payload.station = stationKey; }
 			if (origin) { payload.lat = origin.lat; payload.lng = origin.lng; }
 		}
 		delete payload.budget;
 		if (budget) { payload.budget = budget; }
+		// ページの言語。サーバーは店名・エリア・営業時間・AIの文をこの言語で返す（送らない古い画面には日本語で返る）。
+		// 予算チップ・送り直し（直前の条件の写し）にも、いまのページの言語を付け直す
+		if (T.lang) { payload.lang = T.lang; } else { delete payload.lang; }
 		lastReq = payload;
 
 		fetch(endpoint, {
@@ -777,20 +1232,27 @@ function mount(el, options) {
 			body: JSON.stringify(payload)
 		})
 			.then(function (res) {
-				return res.json().then(function (json) { return { ok: res.ok, json: json }; });
+				return res.json().then(function (json) { return { ok: res.ok, status: res.status, json: json }; });
 			})
 			.then(function (r) {
+				// 待つあいだに起動し直された（/nearby/ で出発点を変えた）なら、前の出発点の返事は描かない・残さない
+				if (!alive()) { return; }
+				sending = false;
 				if (!r.ok) {
-					renderError(errorText(r.json));
+					var how = retryHow(r.json && r.json.code, r.status);
+					if (onResult) { chipError(errorText(r.json), how); } else { renderError(errorText(r.json), how); }
 					return;
 				}
 				// 送った条件も一緒に残す。「戻る」で復元した結果から予算チップを押したときに使う
 				r.json.request = payload;
 				try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(r.json)); } catch (e) { /* 容量超過等では無視 */ }
-				renderResult(r.json);
+				renderResult(r.json, true);
 			})
 			.catch(function () {
-				renderError(t('netFailed', '通信に失敗しました。時間をおいてお試しください。'));
+				if (!alive()) { return; }
+				sending = false;
+				var text = t('netFailed', '通信に失敗しました。時間をおいてお試しください。');
+				if (onResult) { chipError(text, 'resend'); } else { renderError(text, 'resend'); }
 			});
 	}
 
@@ -804,10 +1266,28 @@ function mount(el, options) {
 	} catch (e) { /* 未対応ブラウザは通常扱い */ }
 
 	var saved = null;
-	if (navType === 'back_forward') {
+	var restore = (typeof options.restore === 'boolean') ? options.restore : (navType === 'back_forward');
+	if (restore) {
 		try { saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY) || 'null'); } catch (e) { /* 壊れた保存値は無視 */ }
+		// 現在地のコースは、いまの出発座標で作ったものだけを出す（別の場所で作ったコースを出さない）。
+		// 保存は消さない ―― 「進む」でその場所に戻ったときに使う
+		var req = saved && saved.request;
+		if (origin && !(req && req.lat === origin.lat && req.lng === origin.lng)) { saved = null; }
 	} else {
+		var hadResult = false;
+		try { hadResult = !!sessionStorage.getItem(STORAGE_KEY); } catch (e) { /* 無視 */ }
 		try { sessionStorage.removeItem(STORAGE_KEY); } catch (e) { /* 無視 */ }
+		// 結果を出したまま再読み込みした。診断は1問目に戻るのに、ブラウザは結果があったときのスクロール位置を戻すので、
+		// 短くなったページの別の欄（「おすすめの場所」・フッター）に着いていた（BUGS #28）。
+		// このときだけブラウザの位置の復元を止め、診断の欄へ着地させる。止めるのはこの1回だけ ――
+		// ページを離れるときに auto へ戻し、スポットから「戻る」で帰ってきたときの復元は今までどおりにする。
+		// 復元するかを呼び出し側が決めるページ（/nearby/）は、位置も nearby.js が決めるので触らない
+		if (hadResult && navType === 'reload' && typeof options.restore !== 'boolean' && 'scrollRestoration' in history && !shared) {
+			history.scrollRestoration = 'manual';
+			var land = function () { reveal(el.closest('section') || el, true); };
+			if (document.readyState === 'complete') { land(); } else { window.addEventListener('load', land); }
+			window.addEventListener('pagehide', function () { history.scrollRestoration = 'auto'; });
+		}
 	}
 
 	if (shared && shared.spots && shared.spots.length) {

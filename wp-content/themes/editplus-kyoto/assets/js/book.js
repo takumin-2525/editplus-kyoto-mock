@@ -195,6 +195,11 @@
 		range.value = ps[0];
 		var h = '#p=' + ps[0];
 		if (window.location.hash !== h) { history.replaceState(null, '', h); }
+		// 言語の切り替え先にも、いま読んでいるページを付ける。切り替え先のURLはサーバーが作るので #p= を知らず、
+		// 英語に変えると1ページ目に戻っていた（BUGS #37。nearby.js が ?hotel= を書き換えるのと同じ手）
+		Array.prototype.forEach.call(document.querySelectorAll('#langMenu a[href], #langSheet a[href]'), function (a) {
+			a.setAttribute('href', a.getAttribute('href').split('#')[0] + h);
+		});
 		book.classList.toggle('no-left', !exists(sideIndex('left', current)));
 		book.classList.toggle('no-right', !exists(sideIndex('right', current)));
 	}
@@ -653,6 +658,12 @@
 				p.hidden = !open;
 			});
 			book.querySelectorAll('.book-tool').forEach(function (b) { b.classList.toggle('is-on', b === btn && !book.querySelector('.book-panel[data-panel="' + name + '"]').hidden); });
+			// 開いた面は見開きの下にあり、ボタンを押しても画面が変わらないので何も起きないように見えた（2026-10-03 テスト。
+			// スマホでは目次の頭が y=837、PC でも y=1033 で画面の外）。開いたら面の頭まで送る
+			var shown = book.querySelector('.book-panel[data-panel="' + name + '"]');
+			if (shown && !shown.hidden) {
+				shown.scrollIntoView({ behavior: reduced.matches ? 'auto' : 'smooth', block: 'start' });
+			}
 		});
 	});
 	book.querySelectorAll('.book-panel a[data-page]').forEach(function (a) {

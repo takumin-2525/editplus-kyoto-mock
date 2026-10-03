@@ -3,7 +3,7 @@ Theme Name: EditPlus Kyoto Concierge
 Theme URI: https://github.com/takumin-2525/editplus-web-renewal
 Author: 高速オフセット / 株式会社エディットプラス
 Description: 京都・大阪観光コンシェルジュ リニューアル用の自作テーマ。60_デザイン/kyoto-concierge-rough.html のデザインを再現。
-Version: 0.9.35
+Version: 0.9.43
 Requires at least: 6.0
 Requires PHP: 8.0
 Text Domain: editplus-kyoto
@@ -62,6 +62,18 @@ body{margin:0;background:var(--washi);color:var(--sumi);font-family:var(--gothic
 /* 横方向のはみ出しはページを横スクロールさせない（スマホで「横にスライドできてしまう」のを構造的に止める）。
    clip はスクロール領域を作らないので、position:sticky 等に影響しない。はみ出し自体は各所で直す前提の最後の砦 */
 html,body{overflow-x:clip} /* iOSのSafariは html だけだと横に動くことがあるので body にも */
+/* 固定ヘッダーの下に着地させる（2026-10-03）。ヘッダーは position:fixed（高さ74px／840px以下60px＋罫線1px）なのに、
+   これが無かったため、ナビ・アンカー（/#quiz・/#browse・/#spots）で飛ぶと見出しの上半分がヘッダーの下に隠れ、
+   Shift+Tab で戻ったフォーカスもヘッダーの裏に入っていた（BUGS #2）。
+   アンカーの着地・フォーカスの移動・scrollIntoView（誌面の目次・診断の結果）のすべてに効く。+16px は見出しとヘッダーの間。
+   ログイン中は管理バーのぶん固定ヘッダーが下がる（.admin-bar は body に付くので :has で html から見る） */
+html{scroll-padding-top:calc(75px + 16px)}
+html:has(body.admin-bar){scroll-padding-top:calc(75px + 32px + 16px)}
+@media(max-width:840px){
+  html{scroll-padding-top:calc(61px + 16px)}
+  html:has(body.admin-bar){scroll-padding-top:calc(61px + 32px + 16px)}
+}
+@media(max-width:782px){html:has(body.admin-bar){scroll-padding-top:calc(61px + 46px + 16px)}}
 .wrap{max-width:1200px;margin:0 auto;padding:0 30px}
 a{color:inherit;text-decoration:none}
 img{display:block;max-width:100%}
@@ -327,12 +339,38 @@ section{padding:46px 0}
 .rs-step .in>p:last-of-type{margin-bottom:16px}
 @keyframes fadeup{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 /* ルートを開く・予算の調整は、カードの列の下に、トップの「記事を読む」と同じ左寄せで */
-.r-foot{display:flex;flex-wrap:wrap;align-items:center;gap:14px 20px;margin-top:34px}
-.r-budget{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+/* 「ルートを開く」とチップは、上下の真ん中ではなく文字の並び（ベースライン）で揃える（2026-10-03 手直し）。
+   真ん中揃えだと、押した後にチップの下へ「組み立てています」が1行増えたとき、行の真ん中が下がって
+   チップが6px上へ・「ルートを開く」が11px下へ動いた。ベースラインなら、下に行が増えても1行目の位置は変わらない。
+   チップの枠は左寄せのまま、残りの幅を全部持たせる（下の .b-status がその幅で折れる） */
+.r-foot{display:flex;flex-wrap:wrap;align-items:baseline;gap:14px 20px;margin-top:34px}
+.r-budget{display:flex;gap:10px;align-items:center;flex-wrap:wrap;flex-grow:1}
 .b-chip{background:none;border:1px solid var(--line);color:var(--sumi-soft);font-size:13px;letter-spacing:var(--tr-body);
   padding:9px 18px;border-radius:2px;cursor:pointer;transition:.2s}
 .b-chip:hover{border-color:var(--indigo);color:var(--indigo)}
 .b-note{font-size:12px;color:var(--sumi-faint);letter-spacing:var(--tr-display)}
+/* 予算チップを押してから返事が来るまで（2026-10-03 → quiz.js の chipBusy）。今のコースは消さずに薄くし、
+   押したチップの下に「組み立てています」を1行出す。消していた頃は結果の高さがその場で無くなり、
+   チップのあたりを見ていた人の画面に「おすすめの場所」やフッターが映った（BUGS #1） */
+.quiz.is-busy .q-res>:not(.r-foot),.quiz.is-busy .r-map,.quiz.is-busy .b-chip,.quiz.is-busy .b-note{opacity:.32;pointer-events:none;transition:opacity .3s}
+.b-status,.b-err{flex-basis:100%;margin:2px 0 0;font-size:13px;line-height:1.7;letter-spacing:var(--tr-display);color:var(--sumi-soft)}
+/* 文の長さをチップの枠の幅の見積もりに入れない（2026-10-03 手直し）。入れると枠の幅が「チップ＋文」になり、
+   ホテル・/nearby/ の PC（結果の幅760px）とトップの幅800前後では「ルートを開く」の横に入らず、押した瞬間にチップの列ごと
+   次の行へ落ちた（押したチップが左へ約300px・下へ60px）。幅は親（チップの枠）に合わせ、その幅で折り返す */
+.b-status,.b-err{contain:inline-size}
+.b-status{display:flex;align-items:center;gap:12px}
+.b-status .q-loading{margin:0;gap:5px}
+.b-status .q-loading span{width:6px;height:6px}
+/* 失敗の文は最後の行に「い。」だけ落とさない。「もう一度試す」は文の下の行に置く（文の途中に挟まると、どこまでが文か読みにくい）。
+   チップと同じ重さにはしない（主役は今のコース） */
+.b-err{text-wrap:pretty}
+:lang(ja) .b-err{line-break:strict}
+@supports (word-break:auto-phrase){:lang(ja) .b-err{word-break:auto-phrase}}
+.b-retry{display:block;margin:2px 0 0;padding:0;border:0;background:none;font:inherit;color:var(--indigo);cursor:pointer;white-space:nowrap;
+  text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:.3em}
+.b-retry:hover{text-decoration-color:currentColor}
+/* 描き直したあとにフォーカスを移す見出し（quiz.js の focusOn）。押せる物ではないので枠は出さない */
+.quiz .q-title:focus,.quiz .res-title:focus{outline:none}
 /* 「時刻は目安」の注意書き。読み飛ばせるが、探せば必ず見つかる位置に置く */
 .res-note{margin:16px 0 0;font-size:12px;line-height:1.8;color:var(--sumi-faint)}
 /* 注意書きが続くとき（乗換案内の開き方・満たせなかった条件・時刻は目安）は、ひとまとまりに見えるよう間を詰める */
@@ -400,7 +438,9 @@ section{padding:46px 0}
 .strip::-webkit-scrollbar-thumb{background:var(--line);border-radius:3px}
 .tcard{scroll-snap-align:start}
 .tcard .imgwrap{aspect-ratio:4/5}
-.noimg--tall{aspect-ratio:4/5}
+/* .noimg（3:2。下に書いてある）より強くする（2026-10-03。BUGS #38）。詳細度が同じで後ろの .noimg が勝ち、
+   写真の無いカードだけ横長の低い箱になって、店名の行がカードごとに上下にずれていた */
+.noimg.noimg--tall{aspect-ratio:4/5}
 .tcard h3{font-family:var(--mincho);font-size:16px;letter-spacing:var(--tr-body);margin:16px 0 4px;font-weight:600}
 .tcard .meta{font-size:12px;color:var(--sumi-faint)}
 
@@ -439,7 +479,17 @@ section{padding:46px 0}
 .actions a{color:var(--indigo-soft);text-underline-offset:3px}
 .actions a:hover{color:var(--indigo);text-decoration:underline}
 /* 営業時間: 固定幅で切らず、Map/Tel等が使わなかった残り幅を全部使う */
-.actions .hours{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 auto;min-width:0;text-align:right}
+.actions .hours{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1 1 5.5em;min-width:min(100%,5.5em);text-align:right}
+/* 徒歩・地図・電話は縮ませない（2026-10-03）。営業時間の基準幅が文字全部の長さ（flex:1 1 auto）だったため、
+   長い営業時間（「7:30～22:00※店舗により異なる」）の店では残りの3つが押し縮められ、和文が1字ずつ縦に折れていた
+   （「徒歩約2分」43×41px・「地図」19×41px。BUGS #4）。営業時間は残った幅だけを使い、入らない分は … で切る */
+.actions>.walk,.actions>a,.actions>span:not(.hours){flex:none;white-space:nowrap}
+/* ただし営業時間を残りの幅に潰しきらない（2026-10-03 手直し）。徒歩・地図・電話にアイコンが入って3つで約52px広がり、
+   幅320・900px のカードでは営業時間の箱が1〜6px（「1.」「4」の欠片だけ）、360・375・1024px でも「4:00〜12…」に切れていた。
+   ふつうの長さ（「14:00〜22:30」12pxで63px）が入る5.5emを下回るときは、縮めずに次の行（徒歩・地図・電話の下）へ回す。
+   次の行でも右に寄せたままにする（同じ一覧で営業時間がいつもカードの右端にあるほうが、目で追いやすい）。
+   それより長い営業時間（「※店舗により異なる」付き）は今までどおり … で切る */
+.actions{flex-wrap:wrap;row-gap:6px}
 .walk-note{margin-top:20px;font-size:12px;color:var(--sumi-faint)}
 .hotels-lead{color:var(--sumi-soft);font-size:14px;margin:0 0 18px}
 /* ============ /hotel/ お泊まりのホテルから探す ============
@@ -489,7 +539,7 @@ section{padding:46px 0}
 .finder-go span{font-family:var(--gothic);font-size:16px;letter-spacing:0;transition:transform .2s}
 .finder-go:hover{color:var(--indigo)}
 .finder-go:hover span{transform:translateX(4px)}
-.finder-go[disabled]{opacity:.5;cursor:default}
+.finder-go[disabled],.finder-go[aria-disabled="true"]{opacity:.5;cursor:default}
 .finder-go--line{padding:0 0 8px;border-bottom:1px solid var(--sumi);letter-spacing:var(--tr-meta);font-size:15px}
 .finder-go--line:hover{border-color:var(--indigo)}
 .finder-note{margin:16px 0 0;font-size:13px;line-height:1.8;color:var(--sumi-faint);min-height:1.8em}
@@ -501,6 +551,14 @@ section{padding:46px 0}
 .finder-suggest a:hover,.finder-suggest .sel a{background:var(--panel)}
 .s-name{font-family:var(--mincho);font-size:15px;letter-spacing:var(--tr-display);color:var(--sumi)}
 .s-area{font-family:var(--gothic);font-size:12px;letter-spacing:var(--tr-display);color:var(--sumi-faint);white-space:nowrap}
+/* スマホでは候補の箱を「探す →」の下まで広げる（2026-10-03。BUGS #34）。入力欄の幅（235px）だけだと
+   「ホテルグランヴィア／京都」と館名が2行に折れた。/nearby/ の .nearby-finder と同じ広げ方。PC は今までどおり入力欄の幅 */
+@media(max-width:840px){
+  .finder .finder-form{position:relative}
+  .finder .finder-field{position:static}
+}
+/* 現在地順の結果を描いたあとにフォーカスを移す見出し（app.js）。押せる物ではないので枠は出さない */
+#resultsTitle:focus{outline:none}
 
 /* 検索後（S1/S2）：写真を外し、見出しと探すを1段に並べて結果を早く見せる */
 .hotel-fv--compact{grid-template-columns:1fr;min-height:0;border-bottom:1px solid var(--line)}
@@ -523,13 +581,23 @@ section{padding:46px 0}
 /* 「◯◯ にお泊まりのみなさまへ」は館名が入って長くなる。1行で受け止めず、
    /hotel/ の見出しより1段落とした級数で折り返させる */
 .hotel-fv--single .fv-title{font-size:clamp(25px,2.4vw,34px)}
+/* 見出しの中のホテル名（single-hotel.php）。名前を1語として扱い、途中で折らない（2026-10-03。BUGS #33）。
+   1行より長い名前だけ、入らないところで折る（anywhere）。inline-block にしないのは、見出しの「行の長さを揃える」（balance）が
+   箱の幅を先に縮め、1行に入る名前まで箱の中で折れたため（実測） */
+.hotel-name{word-break:keep-all;overflow-wrap:anywhere}
+/* スマホでは見出しの字間を詰め、幅に合わせて級数を下げる。ホテル名（「ホテルグランヴィア京都」11字）が375pxで327px要り、
+   1行（315px）に入らなかった。320pxでも1行に入る大きさ（7vw）にする。それでも入らない長い名前だけが上の anywhere で折れる */
+@media(max-width:840px){
+  .hotel-head .single-title,.hotel-fv--single .fv-title{font-size:clamp(22px,7vw,27px);letter-spacing:var(--tr-head)}
+}
 .hotel-fv--single .single-body{margin:18px 0 0;font-size:15px}
 .hotel-fv--single .hotel-jump{margin-top:28px}
 /* 写真クレジットは写真の上（右下）に置く。本文側の余白を取らない */
 .hotel-fv--single .photo-credit{position:absolute;right:16px;bottom:12px;margin:0;color:rgba(255,255,255,.72)}
 
 /* section の既定 padding:88px を打ち消し、ページ内ブロックとして積む */
-.hsec{padding:0;margin-top:80px;scroll-margin-top:100px}
+/* 着地の位置は html の scroll-padding-top（ヘッダー＋16px）が全ページで決める。ここで足すと二重になる（2026-10-03 に scroll-margin-top:100px を外した） */
+.hsec{padding:0;margin-top:80px}
 .hsec:first-child,.hsec[hidden]+.hsec{margin-top:0}
 
 /* 結果の一覧。カードにせず罫線の行にする（800軒でも2,800軒でも目で走査できる）。
@@ -585,9 +653,16 @@ section{padding:46px 0}
 .page-main--after-hero{padding:72px 0 88px}
 .breadcrumb{font-size:12px;color:var(--sumi-faint);margin-bottom:26px;letter-spacing:var(--tr-head)}
 .breadcrumb a:hover{color:var(--sumi)}
-.single-head .meta-top{display:flex;gap:8px;margin-bottom:14px}
+/* 札は縮ませずに次の行へ回す（2026-10-03。BUGS #16）。折り返しが無く、360px以下で「東福寺・伏見稲荷大／社周辺」と
+   丸い枠の中で2行に折れ、高さ68pxの楕円になっていた */
+.single-head .meta-top{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.single-head .meta-top .chip{white-space:nowrap}
 .chip--cat{border-color:var(--indigo-soft);color:var(--indigo-soft)}
 .single-title{font-family:var(--mincho);font-size:clamp(27px,4vw,42px);letter-spacing:var(--tr-meta);font-weight:600;margin:0 0 30px;line-height:1.4}
+/* 1語が行より長い見出し（英字だけの店名「KYOTO KAWARAMACHI GARDEN FOOD HALL」・カタカナの長い1語）は、その語だけ途中で折る
+   （2026-10-03。BUGS #36）。文節で折る指定（auto-phrase）だけでは折る所が無く、html,body{overflow-x:clip} で右端が切れて見えなかった。
+   コース名 .res-title と同じ扱い。折れる所があるあいだは今までどおり */
+.single-title,.shead .ttl{overflow-wrap:anywhere}
 /* hotel: ホテル専用ページのページ内アンカー。
    タブをやめて縦並びにしたので、上から下へ読める順に並べたうえで、
    カウンターの人が /hotel/<slug>/#course に直行できるようにしている */
@@ -597,7 +672,8 @@ section{padding:46px 0}
 .hotel-jump a{color:var(--sumi-soft)}
 .hotel-jump a:hover{color:var(--sumi)}
 /* セクション共通の padding:88px を打ち消す（下層ページでは詰めて並べたい） */
-.hotel-section{padding:0;margin-top:44px;scroll-margin-top:120px}
+/* 着地の位置は html の scroll-padding-top が決める（.hsec と同じ。2026-10-03 に scroll-margin-top:120px を外した） */
+.hotel-section{padding:0;margin-top:44px}
 .hotel-back{margin-top:56px;font-family:var(--mincho);letter-spacing:var(--tr-meta)}
 /* ============ いまいる場所から（/nearby/）============
    2026-09-17 に作り直し → 60_デザイン/2026-09-17_現在地から探す画面のデザイン監査.md
@@ -609,26 +685,32 @@ section{padding:46px 0}
 .hotel-jump[hidden],.hotel-fallback[hidden]{display:none}
 
 .nearby-fv .fv-body .kicker{display:block;margin:0 0 14px}
-/* 「いまいる場所から、」9文字が右カラム（最大540px）に1行で入る級数 */
+/* 「いまいる場所から。」9文字が右カラム（最大540px）に1行で入る級数（1行目の「ホテルから、」は6文字） */
 .nearby-fv .fv-title{font-size:clamp(26px,2.7vw,40px)}
-.nearby-locate{margin-top:30px}
-/* 画面で押せるものはこれ1つ。以前は下線1本の文字リンクで、パンくずと同じ太さだった */
+/* 出発点を選ぶタブ（2026-10-03）。/hotel/ の finder の部品（文字だけのタブ・下線1本の入力欄）をそのまま使い、
+   上の空けだけ詰める。/hotel/ は見出しの下が finder だけだが、ここは下に手順も入るので、46pxだと1画面に収まらない */
+.nearby-finder{margin-top:34px}
+/* 「現在地から」の面で押せるもの。以前は下線1本の文字リンクで、パンくずと同じ太さだった */
 .nearby-btn{padding:15px 34px;font-size:14px;cursor:pointer;background:none;font-weight:inherit}
-.nearby-btn[hidden]{display:none}
 .nearby-btn[disabled]{opacity:.5;cursor:default}
 .nearby-privacy{margin-top:12px}
-/* もう1つの出発点（/nearby/ →「お泊まりのホテルから巡る」、/hotel/ →「いまいる場所から巡る」）。
-   ボタンにはしない。前置きは注記と同じ薄さ、リンクは本文の濃さ＋下線で、主役のボタンの次に目に入る重さにする */
+/* タブの面の中の文。「ホテルから」は空振り・読めないホテル（入力欄のすぐ下）、「現在地から」は
+   結果を出したあとに切り替えて失敗したとき（ボタンのすぐ下）。次に手を動かす場所の隣に出す。
+   .finder-note と違って高さを取り置かない（何も無いときに、下の注記との間が1行ぶん空く） */
+.nearby-panel-msg{margin:12px 0 0;font-size:13px;line-height:1.8;color:var(--sumi-soft)}
+.nearby-panel-msg:empty{margin:0}
+/* /hotel/ →「いまいる場所から巡る」の文字リンク（archive-hotel.php）。/nearby/ 側の「お泊まりのホテルから巡る」は
+   2026-10-03 にタブへ置き換えて消した。
+   ボタンにはしない。前置きは注記と同じ薄さ、リンクは本文の濃さ＋下線で、主役の入口の次に目に入る重さにする */
 .nearby-hotel{margin:22px 0 0;padding-top:18px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;font-size:13px;letter-spacing:var(--tr-body);line-height:1.8;color:var(--sumi-faint)}
 .nearby-hotel a{color:var(--sumi);font-size:14px;text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:.35em;transition:color .2s,text-decoration-color .2s}
 .nearby-hotel a span{margin-left:.4em}
 .nearby-hotel a:hover{color:var(--indigo);text-decoration-color:currentColor}
-.nearby-fv--done .nearby-hotel{display:none}
 /* 検索結果を出しているとき（見出しと検索欄が左右2列に畳まれる）は、2列をまたいで下に1行で置く */
 .hotel-fv--compact .nearby-hotel{grid-column:1/-1;margin-top:-28px}
 
-/* 取れたあと：写真と説明文を畳み、空いた場所に「どこにいると受け取ったか」を出す。
-   見出し（h1）は残す ―― 畳むのは押す前にだけ要るものだけ。
+/* 出発点が決まったあと：写真・説明文・タブ・手順を畳み、空いた場所に「どこを出発点と受け取ったか」を出す。
+   見出し（h1）は残す ―― 畳むのは選ぶ前にだけ要るものだけ。
    section 共通の padding:46px も外す（写真が無くなると、ただの空白として見える） */
 .nearby-fv--done{min-height:0;padding:0;grid-template-columns:1fr;border-bottom:1px solid var(--line)}
 .nearby-fv--done .fv-photo{display:none}
@@ -636,16 +718,36 @@ section{padding:46px 0}
 .nearby-fv--done .fv-inner{max-width:1140px;margin:0 auto}
 .nearby-fv--done .fv-title{font-size:clamp(23px,2.2vw,30px)}
 .nearby-fv--done .fv-title br{display:none}
-.nearby-fv--done .fv-sub,.nearby-fv--done .nearby-privacy,.nearby-fv--done .nearby-btn{display:none}
-.nearby-fv--done .nearby-locate{margin-top:0}
+.nearby-fv--done .fv-sub,.nearby-fv--done .nearby-steps,.nearby-fv--done .nearby-finder{display:none}
+/* 「ほかのホテルにする」などで、畳んだまま選び直すとき（nearby.js が付ける）。
+   写真の見開きまでは戻さない ―― 結果はすぐ下に出たままで、やめればそのまま読み続けられる。
+   入力欄の下線が1140pxまで伸びると「欄」に見えないので、見開きの右半分と同じ幅に留める */
+.nearby-fv--choosing .nearby-finder{display:block;max-width:540px;margin-top:24px}
+.nearby-fv--choosing .nearby-acts{display:none}
+/* 選び直しをやめる（nearby.php）。開いているあいだだけ、消えたボタン列の代わりに要約の横に出す。
+   Esc しか無いと、スマホでは閉じる手段が無かった */
+.nearby-cancel{display:none}
+.nearby-fv--choosing .nearby-cancel{display:inline-block}
 .nearby-state{display:flex;align-items:baseline;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-top:14px}
 /* 取得前は状態（取得中・失敗）、取得後は結果の要約。同じ要素が兼ねる */
 .nearby-where{margin:0;font-size:13px;line-height:1.8;color:var(--sumi-faint);min-height:1.8em}
 .nearby-fv--done .nearby-where{font-size:14px;color:var(--sumi-soft);min-height:0}
+/* 件数・徒歩分数は途中で折らない（「徒歩2〜18」と「分」が別の行に分かれていた。nearby.js が包む） */
+.nearby-where .nw{white-space:nowrap}
+/* 候補の箱は「探す →」の下まで広げる。/hotel/ は入力欄の幅のままだが、スマホでは入力欄が237pxしか無く、
+   館名が「…駅前ホテ／ル」と2行に折れた。/hotel/ の見た目は変えない約束なので、このページの中だけで広げる */
+.nearby-finder .finder-form{position:relative}
+.nearby-finder .finder-field{position:static}
+/* 出発点を変える（現在地を取り直す／ほかのホテルにする／もう一方の出発点へ）。どれも同じ重さの文字ボタン */
+.nearby-acts{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 22px}
 .nearby-again[hidden]{display:none}
 .nearby-again{border:0;background:none;padding:0 0 3px;cursor:pointer;font-family:var(--gothic);font-size:13px;
   letter-spacing:var(--tr-meta);color:var(--sumi-soft);border-bottom:1px solid var(--line)}
 .nearby-again:hover{color:var(--indigo);border-color:var(--indigo)}
+.nearby-again[disabled]{opacity:.5;cursor:default}
+/* JSが無いときの逃げ道（?hotel= で開かれたとき、そのホテルのページへ） */
+.nearby-noscript{flex-basis:100%;margin:6px 0 0;font-family:var(--mincho);font-size:14px;letter-spacing:var(--tr-meta)}
+.nearby-noscript a span{margin-left:.5em}
 
 /* 押す前の手順。/hotel/ の .steps と同じ部品（縦罫と欧文の番号だけ）。
    .steps は3列だが**ここは2つしか無いので2列にする**。3列のままだと右端が1枠空いて、
@@ -653,8 +755,9 @@ section{padding:46px 0}
 
    **見開きの右半分の中**に置く。柱1本ぶんの幅しか無いので、/hotel/ の寸法のままだと
    入らない：段の間を34px→24pxに詰め、見出しを18px→15px、本文を13.5px→12.5pxに落とす。
-   見出しとボタンから離すため上に42px空ける（罫線は引かない。ここは欄の切れ目ではない） */
-.nearby-steps{margin:42px 0 0;grid-template-columns:repeat(2,1fr)}
+   タブの面から離すため上に38px空ける（罫線は引かない。ここは欄の切れ目ではない）。
+   2026-10-03 にタブが入って見開きの中身が1段増えたので、42px→38pxに詰めた */
+.nearby-steps{margin:38px 0 0;grid-template-columns:repeat(2,1fr)}
 .nearby-steps[hidden]{display:none}
 /* **右の空けを書き落とさないこと。**縦罫は次の段の左端に立つので、右を0にすると
    1段目の文字が罫にそのまま届く。基本の .step は `padding:4px 34px 4px 28px` で
@@ -688,20 +791,29 @@ section{padding:46px 0}
 .nb-list[hidden]{display:none}
 /* 右の列は幅を固定する。auto にすると Map/Tel の有無で列幅が行ごとに変わり、
    徒歩分数が階段状にずれて「近い順」が目で追えなくなる */
-.nb-row{display:grid;grid-template-columns:minmax(0,1fr) clamp(104px,10vw,132px);column-gap:24px;align-items:baseline;
+/* 2026-10-03 から左に正方形の小さな写真（templates/row-spot.php）。列は 写真｜名前・情報｜距離 の3つ */
+.nb-row{display:grid;grid-template-columns:72px minmax(0,1fr) clamp(104px,10vw,132px);column-gap:24px;align-items:baseline;
   padding:17px 6px;border-bottom:1px solid var(--line);transition:background .2s}
 .nb-row[hidden]{display:none}
 .nb-row:hover{background:var(--card)}
-.nb-name{grid-column:1;font-family:var(--mincho);font-size:17px;letter-spacing:var(--tr-head);font-weight:600;margin:0;line-height:1.5}
+.nb-name{grid-column:2;font-family:var(--mincho);font-size:17px;letter-spacing:var(--tr-head);font-weight:600;margin:0;line-height:1.5}
 .nb-row:hover .nb-name a{color:var(--indigo)}
-.nb-meta{grid-column:1;margin:3px 0 0;font-size:12px;line-height:1.6;color:var(--sumi-faint)}
+.nb-meta{grid-column:2;margin:3px 0 0;font-size:12px;line-height:1.6;color:var(--sumi-faint)}
 /* 距離は名前と同じ行の高さに。以前は12pxで Map / Tel と並んでいて、近い順の意味が読めなかった */
 /* 折り返しを止めない。日本語の「徒歩約81分」は7字だが、英語 About 81 min walk・
    スペイン語 A unos 81 min a pie は固定幅を超える。はみ出させるより2行にする */
-.nb-walk{grid-column:2;grid-row:1;margin:0;font-family:var(--gothic);font-size:13px;letter-spacing:var(--tr-display);
+.nb-walk{grid-column:3;grid-row:1;margin:0;font-family:var(--gothic);font-size:13px;letter-spacing:var(--tr-display);
   line-height:1.5;color:var(--indigo);text-align:right}
-.nb-acts{grid-column:2;grid-row:2;margin:4px 0 0;display:flex;gap:14px;justify-content:flex-end;
+.nb-acts{grid-column:3;grid-row:2;margin:4px 0 0;display:flex;gap:14px;justify-content:flex-end;
   font-size:12px;color:var(--sumi-faint);white-space:nowrap}
+/* 写真。枠の大きさを先に決める（読み込みで行が動かない）。行の高さを写真が決めないよう、上に揃えて名前の行から3行ぶんにかける。
+   写真の無いスポットはトップのカード（.noimg）と同じく、和紙の面に名前を組む（「NO IMAGE」とは書かない） */
+.nb-photo{grid-column:1;grid-row:1 / span 3;align-self:start;display:block;width:72px;aspect-ratio:1/1;overflow:hidden;background:var(--panel)}
+.nb-photo img{display:block;width:100%;height:100%;object-fit:cover;transition:opacity .2s}
+.nb-row:hover .nb-photo img{opacity:.9}
+.nb-noimg{display:grid;place-items:center;width:100%;height:100%;padding:6px;border-bottom:1px solid var(--rule)}
+.nb-noimg span{font-family:var(--mincho);font-size:10.5px;line-height:1.4;letter-spacing:var(--tr-body);color:var(--sumi-soft);text-align:center;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .nb-acts a{color:var(--indigo-soft);text-underline-offset:3px}
 .nb-acts a:hover{color:var(--indigo);text-decoration:underline}
 /* トップの診断は独立セクションなので上下に余白と最低高さを持つが、
@@ -709,6 +821,39 @@ section{padding:46px 0}
 .quiz--inline{min-height:0;max-width:none;display:block;text-align:left}
 .quiz--inline .q-step{text-align:center;padding:32px 0}
 .quiz--inline .q-res{max-width:760px}
+
+/* ---- /nearby/ 2026-10-03 午後（宿・駅を出発点に・コース作成を上へ・出典） ---- */
+/* 出発点の候補（提携ホテル・駅・宿）。名前の下に読み（外国語のページで、日本語のままの宿の名前に添えるローマ字）。
+   読みは名前より一段薄く小さく ―― 名前の代わりではなく、確かめる手がかり */
+.nearby-finder .finder-suggest a{align-items:center}
+.nearby-finder .s-main{display:flex;flex-wrap:wrap;align-items:baseline;column-gap:8px;min-width:0}
+.nearby-finder .s-name{overflow-wrap:anywhere}
+.s-reading{flex-basis:100%;font-family:var(--gothic);font-size:12px;letter-spacing:var(--tr-body);line-height:1.5;color:var(--sumi-faint);overflow-wrap:anywhere}
+.s-icon{display:inline-flex;align-self:center;color:var(--indigo-soft)}
+.s-icon .ep-icon{margin-right:0}
+.nearby-finder .s-area{text-align:right;max-width:45%;white-space:normal}
+/* 要約・コースの1行目に添える読み */
+.nb-reading{font-family:var(--gothic);font-size:.86em;letter-spacing:var(--tr-body);color:var(--sumi-faint);font-weight:400}
+/* 「現在地から探す」が使えなかったときの次の一手（ボタンのすぐ下の文に続ける） */
+.nearby-switch{margin-top:10px;font-size:14px;color:var(--sumi);border-bottom-color:var(--sumi-faint)}
+.nearby-switch span{margin-left:.5em}
+.nearby-switch[hidden]{display:none}
+/* 提携ホテルの専用ページ（要約の横。ほかの文字ボタンと同じ重さ） */
+.nearby-partner span{margin-left:.4em}
+/* 出典（CC BY の表示）。検索の近くに小さく。リンクは本文と同じ色・下線だけ */
+.nearby-credit{margin:14px 0 0;font-size:11px;line-height:1.75;letter-spacing:var(--tr-body);color:var(--sumi-faint)}
+.nearby-credit a{color:inherit;text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:.25em}
+.nearby-credit a:hover{color:var(--sumi)}
+.nearby-credit .nw{white-space:nowrap}
+/* ① あなたの京都、どう巡る？（トップの .quiz-sec と同じ部品）。見開きを畳んだ直後に来るので、上の空けはトップより詰める */
+.nearby-quiz[hidden]{display:none}
+.nearby-quiz{padding:56px 0 64px;border-top:0}
+.nearby-quiz .q-head{margin-top:0}
+.nearby-quiz .q-sub{max-width:52ch}
+.nearby-quiz .q-sub b{font-weight:600;color:var(--sumi)}
+/* ② 近くの行き先（main）。上の欄（診断）との間 */
+.nearby-located .nearby-main{padding-top:56px}
+.nearby-main .hotel-section:first-child{margin-top:0}
 
 .single-hero{margin:0 0 36px}
 /* 写真クレジット（撮影者・提供元）。本文の邪魔をしないよう写真の右下に小さく添える */
@@ -742,7 +887,7 @@ section{padding:46px 0}
 .ep-hero-slider .ep-slider__btn--float.ep-slider__btn--next{right:14px}
 /* 押せないときも枠は残す。既定の opacity:.45 は白い地ごと薄くするので、
    写真の上では「消えかけたボタン」になり、壊れているのか端なのか分からない */
-.ep-hero-slider .ep-slider__btn--float:disabled{opacity:1;background:rgba(255,255,255,.55);border-color:rgba(255,255,255,.55);color:var(--sumi-mute)}
+.ep-hero-slider .ep-slider__btn--float:is(:disabled,[aria-disabled="true"]){opacity:1;background:rgba(255,255,255,.55);border-color:rgba(255,255,255,.55);color:var(--sumi-mute)}
 /* いま何枚目か。丸ではなく角（このサイトには丸の言語が無い → .ep-slider__btn と同じ理由） */
 .ep-slider__dots{list-style:none;display:flex;justify-content:center;gap:9px;margin:14px 0 0;padding:0}
 .ep-slider__dot{display:block;width:8px;height:8px;padding:0;border:1px solid var(--sumi-mute);background:none;cursor:pointer;transition:background-color .3s,border-color .3s}
@@ -780,6 +925,13 @@ section{padding:46px 0}
 .infotable{width:100%;border-collapse:collapse;font-size:14px}
 .infotable th{font-family:var(--mincho);text-align:left;white-space:nowrap;padding:10px 24px 10px 0;color:var(--sumi);font-weight:600;letter-spacing:var(--tr-body);border-bottom:1px solid var(--line);vertical-align:top}
 .infotable td{padding:10px 0;color:var(--sumi-soft);border-bottom:1px solid var(--line)}
+/* 見出しにアイコンが付いて（2026-10-03）右の欄が約20px狭くなった。スマホで「阪急大宮駅から徒歩5／分」と最後の行に1字だけ落ちたので、
+   見出しと値の間を詰め、値は最後の行を短くしすぎない折り方にする */
+.infotable td{text-wrap:pretty}
+@media(max-width:600px){.infotable th{padding-right:14px}}
+/* 外国語のページ（2026-10-03）: 見出しが長く（「공식 사이트」「Estación más cercana」）、値に折る所の無い語（公式サイトのドメイン・
+   ローマ字の住所）が来ると、表が枠より広がって右の罫が枠からはみ出した（韓国語のスマホ幅で約10px）。値は語の途中でも折る */
+.infotable td{overflow-wrap:anywhere}
 .mapbox{margin-top:44px;overflow:hidden}
 /* iOSのSafariは iframe を中身の幅に広げようとし、width:100% を無視してページを横に伸ばすことがある。
    width を小さく置いて min-width で100%にすると、iOSでも枠の幅に収まる（定番の回避策） */
@@ -808,7 +960,10 @@ section{padding:46px 0}
 .fbar{display:flex;justify-content:space-between;flex-wrap:wrap;gap:22px;align-items:center}
 /* 字送り .14em のぶん横に伸びるので、24px 固定だと 320px 幅で1行に入らない（実測299px＞中身幅260px） */
 .fbrand{font-family:var(--mincho);font-size:clamp(19px,5vw,24px);letter-spacing:var(--tr-meta);color:var(--sumi)}
-.fnav{display:flex;gap:26px}
+/* 入らないときはリンク単位で次の行へ回す（2026-10-03。BUGS #14）。折り返しが無く2つのリンクが幅を分け合って縮み、
+   360pxで「ホテル／いまいる場所か／ら」「デジタルブッ／ク」と語の途中で折れていた */
+.fnav{display:flex;flex-wrap:wrap;gap:8px 26px}
+.fnav a{white-space:nowrap}
 .fnav a:hover{color:var(--sumi)}
 /* 著作権表記だけは一段落とす。名乗り（ロゴ）とリンクより前に出ると、目が最初にここへ行く */
 .fcopy{font-size:14px;letter-spacing:var(--tr-head)}
@@ -840,6 +995,19 @@ section{padding:46px 0}
 .doc-body .wp-block-table tr:first-child th,.doc-body .wp-block-table tr:first-child td{border-top:1px solid var(--line)}
 .doc-body th,.doc-body .wp-block-table th{width:11em;color:var(--sumi);padding-right:16px}
 .doc-date{margin:48px 0 0;padding-top:18px;border-top:1px solid var(--line);font-size:12px;letter-spacing:var(--tr-body);color:var(--sumi-faint)}
+
+/* 存在しないページ（404.php。2026-10-03。BUGS #36）。文書のページと同じ1段組に、次に行ける入口を罫線の行で並べる
+   （/hotel/ の「見つからないときは」の行リンクと同じ作り）。中身が短いので、フッターを画面の下端に寄せる
+   （以前は PC でフッターの下に約330pxの空きが出ていた） */
+body.error404{display:flex;flex-direction:column;min-height:100vh}
+body.error404 .page-main{flex:1 0 auto}
+.notfound-lead{margin:0 0 30px;font-size:15px;line-height:2;letter-spacing:var(--tr-body);color:var(--sumi-soft);text-wrap:pretty}
+.notfound-links{display:flex;flex-direction:column;border-top:1px solid var(--line)}
+.notfound-links a{display:flex;justify-content:space-between;align-items:center;gap:16px;min-height:52px;padding:12px 4px;border-bottom:1px solid var(--line);
+  font-family:var(--mincho);font-size:16px;letter-spacing:var(--tr-body);color:var(--sumi);transition:color .2s}
+.notfound-links a span{font-family:var(--gothic);color:var(--sumi-faint);transition:transform .2s}
+.notfound-links a:hover{color:var(--indigo)}
+.notfound-links a:hover span{transform:translateX(3px)}
 
 /* お問い合わせ：左に案内、右にフォーム。フォームは箱で囲まず、下線1本の入力欄で組む（/hotel/ の検索欄と同じ） */
 .contact-grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:0 88px;align-items:start}
@@ -887,12 +1055,19 @@ section{padding:46px 0}
 /* 入力の不備。色だけに頼らず、欄のすぐ下に文で出す */
 .cf .wpcf7-not-valid{border-bottom-color:#a2412f!important}
 .cf .wpcf7-not-valid-tip{display:block;margin-top:6px;font-size:12px;line-height:1.6;color:#a2412f}
+/* まだ触っていない欄の不備は、送信を押すまで出さない（2026-10-03 手直し 2巡目）。CF7 は1つの欄を離れると、
+   それより上の欄もまとめて確かめるので、触っていない「お問い合わせの種類」にも「必須です」が出ていた。
+   触った欄には inc/contact.php の小さなスクリプトが .ep-touched を付ける。送信して不備があれば（.invalid）全部出す */
+.cf:not(.invalid):not(.unaccepted) .wpcf7-form-control-wrap:not(.ep-touched) .wpcf7-not-valid-tip{display:none}
+.cf:not(.invalid):not(.unaccepted) .wpcf7-form-control-wrap:not(.ep-touched) .wpcf7-not-valid{border-bottom-color:var(--sumi)!important}
 /* 送信の結果。届いたとき・届かなかったときで枠の色を変える。空のときは出さない */
 .cf .wpcf7-response-output{margin:26px 0 0;padding:16px 18px;border:1px solid var(--line);background:var(--panel);font-size:14px;line-height:1.8;color:var(--sumi)}
 .cf .wpcf7-response-output:empty,.cf.init .wpcf7-response-output,.cf.resetting .wpcf7-response-output,.cf.submitting .wpcf7-response-output{display:none}
 .cf.sent .wpcf7-response-output{border-color:var(--indigo)}
 .cf.invalid .wpcf7-response-output,.cf.unaccepted .wpcf7-response-output,.cf.failed .wpcf7-response-output,.cf.aborted .wpcf7-response-output,.cf.spam .wpcf7-response-output{border-color:#a2412f}
-.cf .screen-reader-response{position:absolute;overflow:hidden;clip:rect(1px,1px,1px,1px);clip-path:inset(50%);height:1px;width:1px;margin:-1px;padding:0;border:0}
+/* 読み上げ用の不備の一覧は、見た目には出さない。CF7 はこれをフォーム（.cf）の外、div.wpcf7 の直下に置くので、
+   .cf の中だけを指していた以前の指定は当たらず、フォームの上に何の欄か分からない箇条書きが見えていた（2026-10-03 手直し 2巡目） */
+.wpcf7 .screen-reader-response,.cf .screen-reader-response{position:absolute;overflow:hidden;clip:rect(1px,1px,1px,1px);clip-path:inset(50%);height:1px;width:1px;margin:-1px;padding:0;border:0}
 .cf .hidden-fields-container{display:none}
 /* 迷惑送信よけの欄。画面の外に置く（display:none にすると機械も飛ばす） */
 .cf-trap{position:absolute!important;left:-9999px;top:auto;width:1px;height:1px;overflow:hidden}
@@ -960,6 +1135,8 @@ section{padding:46px 0}
   padding:22px 26px calc(18px + env(safe-area-inset-bottom));max-height:80vh;overflow-y:auto;
   transform:translateY(100%);transition:transform .5s cubic-bezier(.22,.8,.2,1);box-shadow:0 -24px 60px -36px rgba(0,0,0,.45)}
 .lsheet.open .lsheet-panel{transform:none}
+/* 引き出し・シートの中をなぞり切っても、後ろのページへスクロールを渡さない（2026-10-03。BUGS #7。止める本体は app.js の lockPage） */
+.mnav-panel,.lsheet-panel{overscroll-behavior:contain}
 .lsheet-panel .kicker{display:block;margin-bottom:4px}
 .lsheet-list{list-style:none;margin:0;padding:0}
 .lsheet-list li+li{border-top:1px solid var(--line)}
@@ -1017,7 +1194,8 @@ section{padding:46px 0}
 @media(max-width:840px){
   .filters{gap:12px}
   .filters-field{flex:1 1 100%}
-  .filters-field select{max-width:100%;width:100%}
+  /* 16px未満だと iPhone が選択欄に合わせてページを拡大し、閉じても拡大されたままになる（2026-10-03。BUGS #10。.r-keep-url input と同じ扱い） */
+  .filters-field select{max-width:100%;width:100%;font-size:16px}
 }
 
 /* ============ responsive ============ */
@@ -1044,6 +1222,7 @@ section{padding:46px 0}
   .lang-btn .globe{width:17px;height:17px}
   .htitle{font-size:38px}
   .hero-search button{padding:0 20px}
+  .hero-search input{font-size:16px} /* 16px未満だと iPhone が検索欄に合わせてページを拡大する（BUGS #10） */
   section{padding:34px 0}
   .page-main{padding:110px 0 64px}
   /* /hotel/ */
@@ -1072,7 +1251,18 @@ section{padding:46px 0}
   /* 行は名前＋距離の2列のまま。Map/Tel は幅を食うので名前の下に回す */
   .nb-row{column-gap:14px;padding:15px 2px}
   .nb-name{font-size:16px}
-  .nb-acts{grid-column:1;grid-row:3;justify-content:flex-start;margin-top:7px}
+  /* 写真（60px）が入ると、375px では距離の列（104px）まで右に置く幅が無い（英語の店名が1語ずつ5行に折れた）。
+     スマホでは距離を名前と情報の下に回し、行の頭に揃える（左端の同じ位置に並ぶので、近い順は縦に目で追える） */
+  .nb-row{grid-template-columns:60px minmax(0,1fr)}
+  .nb-photo{width:60px;grid-row:1 / span 4}
+  .nb-walk{grid-column:2;grid-row:3;text-align:left;margin-top:5px}
+  .nb-acts{grid-column:2;grid-row:4;justify-content:flex-start;margin-top:5px}
+  .nearby-quiz{padding:40px 0 44px}
+  .nearby-located .nearby-main{padding-top:40px}
+  /* 候補の右端（区・「京都駅から徒歩3分」）は、375px では名前と並べる幅が無い（英語の「1 min walk from Kyoto Station」がはみ出した）。
+     名前の下に回す */
+  .nearby-finder .finder-suggest a{flex-direction:column;align-items:flex-start;gap:2px}
+  .nearby-finder .s-area{max-width:none;text-align:left}
   .page-main--after-hero{padding:52px 0 64px}
   .hsec{margin-top:60px}
   .steps{grid-template-columns:1fr}
@@ -1085,6 +1275,17 @@ section{padding:46px 0}
 
 @media(max-width:360px){
   .brand .en{font-size:7px}
+}
+/* 幅350px以下（iPhone SE 初代の320px・Galaxy Fold のカバー画面344px）では、ロゴの1行（日本語約178px）がロゴの箱（134px）に入らず、
+   地球ボタンに食い込んでいた（320pxで日本語16px・英語19px・スペイン語30px。BUGS #13。Android に多い360pxは入っている）。
+   ≡ との間の10pxを外し（押せる範囲は44pxずつのまま隣り合う）、日本語・英語は字を一段落とす。
+   スペイン語（30字）は1行に収めると10px台になって読めないので、ここでは2行に組み、下の英字の行は出さない */
+@media(max-width:350px){
+  .lang-btn+.menu-btn{margin-left:0}
+  html[lang^="ja"] .brand .jp{font-size:14px;letter-spacing:.04em}
+  html[lang^="en"] .brand .jp{font-size:12.5px;letter-spacing:.02em}
+  html[lang^="es"] .brand .jp{white-space:normal;line-height:1.2;text-wrap:balance}
+  html[lang^="es"] .brand .en{display:none}
 }
 
 /* Browse: 段階式チップ（親→子） */
@@ -1132,11 +1333,12 @@ section{padding:46px 0}
 .ep-slider__total::before{content:"";display:inline-block;width:8px;height:1px;background:currentColor;margin:0 7px;vertical-align:middle}
 /* 送りのボタンは地を持たない。押せるときだけ枠線が見え、ホバーで面が藍に塗られる */
 .ep-slider__btn{width:38px;height:38px;padding:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);background:none;color:var(--sumi-soft);cursor:pointer;transition:background-color .3s,border-color .3s,color .3s}
-.ep-slider__btn:hover:not(:disabled){background:var(--indigo);border-color:var(--indigo);color:#fff}
+.ep-slider__btn:hover:not(:disabled,[aria-disabled="true"]){background:var(--indigo);border-color:var(--indigo);color:#fff}
 .ep-slider__btn svg{display:block}
 /* 押せない状態なので薄いままでよい（無効な部品はコントラストの基準の対象外）。
    ここはバナーの写真の上にも重なり地が固定でないので、濃くしても読みやすくなるとは限らない */
-.ep-slider__btn:disabled{color:var(--sumi-mute);opacity:.45;cursor:default}
+/* 端のボタンは disabled ではなく aria-disabled（app.js。フォーカスを落とさないため。2026-10-03） */
+.ep-slider__btn:is(:disabled,[aria-disabled="true"]){color:var(--sumi-mute);opacity:.45;cursor:default}
 /* バナーは見出しを持たない帯なので、写真の上に重ねて置く */
 .ep-slider__btn--float{position:absolute;top:calc(50% - 4px);transform:translateY(-50%);z-index:1}
 .ep-slider__btn--float.ep-slider__btn--prev{left:-8px}
@@ -1197,8 +1399,11 @@ section{padding:46px 0}
 /* ===== 誌面（デジタルブック） =====
    PCは見開き、スマホは1ページを暗い台の上に置き、本のように1枚ずつめくる（CSS の3D）。動きは assets/js/book.js。
    JSが無いときは .book-pages（全ページを縦に並べた一覧）がそのまま見える */
-.book{padding:40px 0 8px}
-.book--empty{padding:80px 0}
+/* 上の余白は固定ヘッダー（74px／840px以下60px）込み（2026-10-03）。誌面は .page-main（上150px）で包まずに get_header() の直後に出るので、
+   40px だけだと「最新号」の札と号名がヘッダーの裏に潜っていた（PC 札 y=43〜68・ヘッダー下端75。BUGS #5）。
+   全画面（.book.is-full）は自分の padding:0 を持つので影響しない */
+.book{padding:calc(74px + 40px) 0 8px}
+.book--empty{padding:calc(74px + 80px) 0 80px}
 .book-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:22px}
 .book-title{font-family:var(--mincho);font-size:clamp(22px,2.8vw,30px);letter-spacing:var(--tr-meta);font-weight:600;margin:6px 0 4px}
 .book-meta{margin:0;color:var(--sumi-soft);font-size:13px;letter-spacing:var(--tr-head)}
@@ -1266,7 +1471,9 @@ section{padding:46px 0}
 .book.is-full.ui-off .book-bar,.book.is-full.ui-off .book-arrow,.book.is-full.ui-off .book-full{opacity:0;pointer-events:none}
 body.is-book-full{overflow:hidden}
 @media (prefers-reduced-motion:reduce){.book-box.is-zoom-anim{transition:none}}
-.book-bar{display:flex;align-items:center;gap:18px;padding:14px 0 0}
+/* padding は上だけ。一括指定（padding:14px 0 0）にすると .wrap の左右30pxを0で上書きし、
+   ページ番号と目盛りだけが画面の端に貼り付いていた（2026-10-03。BUGS #23） */
+.book-bar{display:flex;align-items:center;gap:18px;padding-top:14px}
 .book-no{font-family:var(--serif);letter-spacing:var(--tr-meta);font-size:13px;min-width:92px;color:var(--sumi-soft)}
 .book-range{flex:1 1 auto;accent-color:var(--sumi);margin:0}
 .book-hint{font-size:12px;color:var(--sumi-faint);white-space:nowrap}
@@ -1295,7 +1502,8 @@ body.is-book-full{overflow:hidden}
 .book-issue .ttl{display:block;font-family:var(--mincho);font-size:14px;letter-spacing:var(--tr-head);line-height:1.5}
 .book-issue .date{display:block;font-size:12px;color:var(--sumi-faint);margin-top:2px}
 @media(max-width:840px){
-  .book{padding:26px 0 8px}
+  .book{padding:calc(60px + 26px) 0 8px} /* ヘッダー（60px）込み。理由は上の .book */
+  .book--empty{padding:calc(60px + 60px) 0 60px}
   .book-head{flex-direction:column;align-items:flex-start;gap:12px;margin-bottom:16px}
   .book-stage{padding:44px 0 14px}
   .book-arrow{display:none}
@@ -1347,6 +1555,51 @@ body.is-book-full{overflow:hidden}
   .chip{padding:11px 16px}
   .mlinks a{min-height:44px;align-items:center}
 }
+/* その2（2026-10-03。BUGS #6）。375px の実測で 44px に届かなかったもの：
+   カードの「地図」「電話」24×20（間隔18px。1ページに9組以上）、パンくず 37×17、「すべて見る」315×22、基本情報の電話 59×20、
+   フッターのリンク 高さ24〜26、診断「← 戻る」57×22、「もう一度診断する」110×20、予算チップ 高さ40、
+   誌面「全画面で読む」120×32・「目次」高さ39、/hotel/ のタブ 高さ33、「絞り込む」高さ41、ページ送り 37×45、写真スライドの送り 38×38・点 8×8。
+   上と同じく見た目は変えず、見えない余白を足して同じだけ負のマージンで引く（行の高さ・並びは変わらない）。
+   枠のあるボタン（チップ・目次・絞り込む）だけは枠ごと44pxにする（余白で広げると枠の外が押せる、と見た目が食い違う）。
+   写真スライドの点は、点の間が9pxしか無く13個並ぶので、横は隣と重ならない幅まで（縦だけ44px）。送りのボタンで足りる */
+@media(max-width:840px){
+  .actions a{padding:12px 6px;margin:-12px -6px}
+  /* 営業時間が次の行へ回ったとき、地図・電話の下に広げた12pxと営業時間の行が重ならない間を取る。
+     重なると、そこを押しても営業時間（後ろの要素が上に来る）に当たり、地図・電話が44pxに届かなくなる */
+  .actions{row-gap:12px}
+  .breadcrumb a{padding:14px 0} /* インライン要素。上下の余白は行の高さを変えない */
+  .infotable a{padding:12px 0}
+  .shead .more{padding:11px 0;margin:-11px 0}
+  .fnav a,.flegal a{padding:10px 0;margin:-10px 0}
+  .q-back{padding:12px 6px;margin:-11px -6px 9px} /* ボタンの既定の余白（上下1px・左右6px）を含めて置き換える。下の空き20pxは変えない */
+  .r-reset{padding:12px 0;margin:-12px 0}
+  /* 上の2つは、上下12pxを足すだけだと日本語以外で44pxに届かない（手直し。en・es 39px、ko 40px、zh 42px）。
+     ボタンの行の高さは言語ごとの書体の高さ（ja 20px・en 15px）で決まるため。箱の高さを44pxで下支えし、文字は箱の真ん中に置く。
+     負のマージンはそのまま（日本語は今までと同じ。ほかの言語は下の行が2〜5px下がるだけ） */
+  .q-back,.r-reset{display:inline-flex;align-items:center;min-height:44px}
+  /* 予算チップが失敗したときの「もう一度試す」（手直し。22px しかなかった）。上の文と当たり判定が重ならないよう、
+     上は余白の分だけ文から離し（見た目の間 2px → 11px）、下は同じだけ負のマージンで引く */
+  .b-retry{padding:11px 0;margin:0 0 -11px}
+  .b-chip,.book-tool,.filters-actions button{min-height:44px}
+  .book-full::after{content:"";position:absolute;inset:-6px 0}
+  .finder-tabs [role=tab]{padding-top:11px;margin-top:-11px}
+  .pagination .page-numbers{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px}
+  .ep-slider__btn{width:44px;height:44px}
+  .ep-slider__dot{position:relative}
+  .ep-slider__dot::before{content:"";position:absolute;left:-4px;right:-4px;top:-18px;bottom:-18px}
+}
+
+/* ============ 小さなアイコン（2026-10-03 → inc/icons.php） ============
+   移動の手段・徒歩の分数・営業時間・定休日・最寄り駅・地図と電話のリンクにだけ付ける（見出しや本文の飾りには付けない）。
+   文字の一部のように振る舞わせる: 色は文字と同じ（currentColor）、大きさは字の1.15倍、細い線、塗らない。
+   縦の位置は和文の字面の真ん中に合わせる（-.22em。明朝・ゴシック、12〜15px、PC・スマホで撮って決めた）。
+   アイコンと続く語は .ep-nb で結ぶ（折り返したときにアイコンだけが行末に残らない） */
+.ep-icon{display:inline-block;flex:none;width:1.15em;height:1.15em;vertical-align:-.22em;margin-right:.3em;overflow:visible}
+.ep-nb{white-space:nowrap}
+/* 要約の行の手段は2つ3つ並ぶ（電車・バス・徒歩）。並ぶアイコンどうしは詰め、最後の1つと文字の間だけ空ける */
+.ep-icon+.ep-icon{margin-left:-.12em}
+/* アイコンを持たない行（基本情報の「公式サイト」）で、見出しの文字の頭を揃えるための同じ幅の空き */
+.ep-icon-space{display:inline-block;width:1.15em;margin-right:.3em}
 
 
 /* ---- クーポン（templates/spot-coupon.php） ----
@@ -1359,7 +1612,9 @@ body.is-book-full{overflow:hidden}
 .ep-coupon__code{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;margin-top:14px !important;font-size:13px;letter-spacing:var(--tr-body)}
 /* コードは打ち写すもの。O と 0、l と 1 を取り違えないよう等幅で大きく出し、選んでコピーしやすくする */
 .ep-coupon__code code{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:22px;font-weight:700;letter-spacing:.12em;
-  padding:2px 10px;background:var(--card);border:1px solid var(--shu);user-select:all}
+  padding:2px 10px;background:var(--card);border:1px solid var(--shu);user-select:all;
+  /* 区切り（-）の無い長いコードは1語として折れず、点線の枠を越えて画面の端で切れていた（2026-10-03。BUGS #39）。枠の幅で折る */
+  min-width:0;max-width:100%;overflow-wrap:anywhere}
 .ep-coupon__until{margin-top:14px !important;font-size:15px;font-weight:700;letter-spacing:var(--tr-body)}
 .ep-coupon__notes{list-style:none;margin:10px 0 0;padding:0;font-size:13px;line-height:1.7;letter-spacing:var(--tr-body)}
 /* 翻訳版だけに出る日本語の原文。店員が読むためのもので、読者には補足 */
@@ -1425,27 +1680,76 @@ body.is-book-full{overflow:hidden}
   .ep-inline-spot__name{font-size:17px}
 }
 
-/* ---- コースの印刷・PDF（quiz.js の preparePrint） ----
-   「PDFで保存・印刷」を押すと、コースから body までの親に .ep-print-path が付く。
-   その道の上にない兄弟（ヘッダー・ほかの棚・フッター）を消し、道の上の余白と飾りを外して、コースだけを紙に出す。
-   画面には影響しない（@media print の中だけ） */
-@media print{
-  html.ep-print-plan,html.ep-print-plan body{background:#fff!important;margin:0!important;padding:0!important}
-  html.ep-print-plan .ep-print-path>:not(.ep-print-path):not(.ep-print-target){display:none!important}
-  html.ep-print-plan .ep-print-path{display:block!important;position:static!important;width:auto!important;max-width:none!important;min-height:0!important;
-    margin:0!important;padding:0!important;border:0!important;background:none!important;box-shadow:none!important;transform:none!important;opacity:1!important}
-  html.ep-print-plan .ep-print-path::before,html.ep-print-plan .ep-print-path::after{display:none!important}
-  html.ep-print-plan .ep-print-target{margin:0!important;padding:0!important;border:0!important;max-width:none!important;animation:none!important}
-  /* 画面の操作は紙に要らない */
-  html.ep-print-plan .r-keep,html.ep-print-plan .r-reset,html.ep-print-plan .r-budget,html.ep-print-plan .r-map{display:none!important}
-  html.ep-print-plan .res-print-site{display:block;margin:0 0 14pt;padding-bottom:6pt;border-bottom:.5pt solid #999;font-family:var(--mincho);font-size:10pt;letter-spacing:.12em;color:#333}
-  html.ep-print-plan .res-print-url:not(:empty){display:block;margin:12pt 0 0;font-size:9pt;color:#333;word-break:break-all}
-  html.ep-print-plan .res-title{font-size:22pt}
-  html.ep-print-plan .res-head{margin-bottom:16pt}
-  /* A4縦に3列。1件が2ページにまたがらないようにする */
-  html.ep-print-plan .rs-grid{grid-template-columns:repeat(3,1fr);gap:18pt 14pt}
-  html.ep-print-plan .rs-step{animation:none!important;opacity:1!important;break-inside:avoid;page-break-inside:avoid}
-  /* 写真の無いスポットの「名前の面」は背景色で出来ているので、背景も刷る */
-  html.ep-print-plan .noimg{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  html.ep-print-plan .actions a{color:#333}
+/* ---- コースの印刷・PDF ----
+   2026-10-03 に assets/css/print.css（media="print"）へ移した。紙には画面のカードではなく、
+   quiz.js の printSheet が組む行程表（.ep-sheet）を出す。印刷の指定はここに足さない */
+
+/* ---- /nearby/ の手直し（2026-10-03 夜） ---- */
+/* 写真の無いスポットの小さな枠（60〜72px）には名前を組まない。和紙の面だけにする。
+   名前はすぐ右に大きく出ているので情報は減らず、枠の中で「Akacha/n」「Cocokar/a」と語の途中で折れて壊れて見えていた */
+.nb-noimg{background:var(--panel)}
+.nb-noimg span{display:none}
+/* 候補の右端（区・「京都駅から徒歩3分」）は折らない。名前の側を折る（PC。「Minami-/ku」「Kyoto/Station」と折れていた） */
+.nearby-finder .s-main{flex:1 1 auto}
+.nearby-finder .s-area{flex:0 0 auto;max-width:none;white-space:nowrap}
+/* 直接開いたときの読み込み中。コースの欄を先に出し、「位置情報を使わないときは」の箱は結果が出るまで隠す（→ nearby.php） */
+.nearby-main--pending .hotel-fallback{display:none}
+.nearby-quiz-wait{margin:0;padding:32px 0;text-align:center;font-size:14px;letter-spacing:var(--tr-body);color:var(--sumi-faint)}
+.nearby-loading{color:var(--sumi-faint)}
+/* 外国語のページの「英字でも探せます」。下の QR の案内と同じ文字の重さで、間を詰める */
+.nearby-latin-note{margin-top:12px}
+.nearby-latin-note + .finder-note{margin-top:6px}
+/* 韓国語は語の途中で折らない（「둘|러볼까요」「코|스를」）。長い語ははみ出させずに折る */
+:lang(ko){word-break:keep-all;overflow-wrap:break-word}
+@media(max-width:840px){
+  /* スマホの候補は高さに上限を付けて、中をスクロールにする（8件で625〜741px あり、画面の下にはみ出した） */
+  .nearby-finder .finder-suggest{max-height:min(52vh,380px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+  /* 読みは1行で切る（3行に折れる読みがあると、1件で候補の箱の高さが倍になる） */
+  .nearby-finder .s-reading{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal}
+  .nearby-finder .s-main{max-width:100%}
+  /* スマホは名前の下に回すので、右端の文は折ってよい（375px に「7 min walk from Kyoto Shiyakusho-mae Station」は入らない） */
+  .nearby-finder .s-area{white-space:normal}
 }
+
+/* ============ 6言語テストの手直し（2026-10-03 夜） ============ */
+/* 韓国語の「語の途中で折らない」（上の :lang(ko)）は、中に入った日本語の住所やリンクにも受け継がれる。
+   折る所が無くなり、基本情報の表（公式サイトのドメイン）や /hotel/ の現在地の結果（日本語の住所）が枠の外へ広がって、
+   距離の表示が画面の右で切れていた。日本語の部分は日本語の折り方に戻し、表の値と一覧の行は中の要素まで語の途中で折ってよいことにする */
+:lang(ko) [lang="ja"]{word-break:normal}
+.infotable td,.infotable td *{overflow-wrap:anywhere}
+.hl-name,.hl-sub{min-width:0;overflow-wrap:anywhere}
+/* 日本語は文節で折る（「最終受｜付16:30」「カフェ・喫｜茶」と語の途中で折れていた）。長すぎる文節は上の anywhere で折る */
+@supports (word-break:auto-phrase){
+  :lang(ja) .infotable td,:lang(ja) .spot .cat{word-break:auto-phrase}
+}
+/* スマホの基本情報の表: 英語・スペイン語・韓国語は見出しが長く（「Estación más cercana」は約200px）、値の列が58pxまで
+   狭まって住所が17行に折れていた。見出しを値の上に置き、値に全幅を使う（日本語・中国語は見出しが短いので表のまま） */
+@media(max-width:600px){
+  :is(:lang(en),:lang(es),:lang(ko)) .infotable,
+  :is(:lang(en),:lang(es),:lang(ko)) .infotable tbody,
+  :is(:lang(en),:lang(es),:lang(ko)) .infotable tr{display:block}
+  :is(:lang(en),:lang(es),:lang(ko)) .infotable tr{padding:10px 0;border-bottom:1px solid var(--line)}
+  :is(:lang(en),:lang(es),:lang(ko)) .infotable th,
+  :is(:lang(en),:lang(es),:lang(ko)) .infotable td{display:block;padding:0;border-bottom:0}
+  :is(:lang(en),:lang(es),:lang(ko)) .infotable th{padding-bottom:3px;white-space:normal}
+}
+/* 中国語の明朝の見出し: 先頭のヒラギノ明朝に無い簡体字（谁・查・礼）だけが後ろの宋体で描かれ、1つの見出しで字の形と高さが
+   そろわなかった（2026-10-03 テスト）。その言語の字が全部ある明朝（宋体）を先にする。ゴシックも同じ考えで、その言語の書体を先に */
+html[lang="zh-CN" i]{
+  --mincho:"Songti SC","STSong","Noto Serif SC","SimSun",serif;
+  --gothic:"PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
+}
+html[lang="zh-TW" i]{
+  --mincho:"Songti TC","LiSong Pro","Noto Serif TC","PMingLiU",serif;
+  --gothic:"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;
+}
+/* /nearby/ の「位置情報を使わないときは」は h2（ページの見出しの段）。/hotel/ の同じ箱の h3 にしか書体が当たっておらず、
+   太字のゴシックで出ていた */
+.hotel-fallback h2{font-family:var(--mincho);font-size:19px;letter-spacing:var(--tr-body);margin:0 0 10px;font-weight:600}
+/* 「8件の候補から選んでください。」を候補の頭に置く（入力欄の下に出すと、開いた一覧に隠れた） */
+.finder-suggest .s-caption{padding:6px 16px 8px;font-size:12px;letter-spacing:var(--tr-body);color:var(--sumi-faint);border-bottom:1px solid var(--line)}
+/* 外国語の枠で出すプライバシーポリシーの断り書き（privacy.php） */
+.doc-lang-note{margin:-18px 0 30px;padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);font-size:13px;line-height:1.8;letter-spacing:var(--tr-body);color:var(--sumi-soft)}
+/* 共有されたコース（/plan/）: コースは JS が描くので、描くまでの欄の高さを取っておく。取らないとフッターが一度上に出てから
+   押し下げられ、PC で読み込みのたびにレイアウトが動いていた（CLS 0.11〜0.20）。描き終われば中身の高さになる */
+.quiz--plan:empty{min-height:100vh}
