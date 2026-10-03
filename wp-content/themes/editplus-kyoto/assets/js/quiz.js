@@ -64,6 +64,17 @@
 	};
 	var modeLabel = function (code) { return t(MODES[code].label[0], MODES[code].label[1]); };
 
+	// エリアの境目（画面の「次のエリアへ」と罫、紙の余白）を、このカードの上に出すか。
+	// サーバーの zone は候補を束ねたときの番号で、番号が替わっても、歩いてすぐの隣のことがある
+	// （実測 2026-10-04: 天龍寺 → eX cafe は徒歩6分・340m、カードのエリアはどちらも「嵐山」なのに「次のエリアへ」と出た）。
+	// 境目は「ここで乗り物に乗って、別のエリアへ移る」の合図なので、歩く区間と、カードのエリア名が前と同じ所には出さない。
+	// エリアの番号を持たない古いコースには何も足さない。手段を持たないコースは、番号とエリア名だけで決める
+	var zoneBreak = function (s, prev) {
+		if (!s || !prev || typeof s.zone !== 'number' || typeof prev.zone !== 'number' || s.zone === prev.zone) { return false; }
+		if (modeCode(s.leg_mode, s.travel_by) === 'walk') { return false; }
+		return !(s.area && prev.area && String(s.area) === String(prev.area));
+	};
+
 	// 小さなアイコン（2026-10-03）。形の正は inc/icons.php で、functions.php が epIcons として渡す（ここに形を写さない）。
 	// 届かなかったときは何も出さない ―― 意味は隣の文字が持っているので、文字だけで読める
 	var ICONS = window.epIcons || {};
@@ -80,7 +91,7 @@
 	var withIcon = function (svg, html) { return svg ? '<span class="ep-nb">' + svg + html + '</span>' : html; };
 
 	// サーバーのエラー文は日本語なので、そのまま出さずに合図（code）で訳を選ぶ。
-	// ここに無い合図（ホテルの座標が未設定、など運用側の不備）のときだけ、サーバーの文を出す
+	// ここに無い合図のときの扱いは、すぐ下の errorText
 	var ERRORS = {
 		no_candidates:     ['errNoCandidates', 'この条件に合うスポットが見つかりませんでした。時間や移動の手段を変えてお試しください。'],
 		walk_out_of_reach: ['errWalkOutOfReach', '歩いて行ける範囲に、この時間帯にご案内できる場所が見つかりませんでした。移動の手段を「電車・バス」か「タクシー・車」に変えてお試しください。'],
@@ -95,9 +106,31 @@
 		hotel_out_of_region: ['errHotelOutOfRegion', 'この宿は対象エリアの外にあるため、コースを作れません。ほかの宿か駅を選んでください。'],
 		station_not_found: ['errStationNotFound', '駅が見つかりませんでした。駅の名前で探し直してください。']
 	};
+	// サーバーの文から、文字だけを取り出す。WordPress が致命的エラーのときに返す文は HTML
+	// （「<p>サイトに重大なエラーが発生しました。</p><p><a href="…">…こちらをご覧ください。</a></p>」）で、
+	// そのまま出すとタグが文字として見える。リンクは押せなくなるので、リンクの文ごと外す。
+	// 読み取りは DOMParser の別の文書でやる（画面の文書に入れないので、中の img や script は動かない）
+	var plainText = function (html) {
+		var s = String(html || '');
+		if (s.indexOf('<') === -1 && s.indexOf('&') === -1) { return s.replace(/\s+/g, ' ').trim(); }
+		try {
+			var doc = new DOMParser().parseFromString(s, 'text/html');
+			Array.prototype.forEach.call(doc.querySelectorAll('a, script, style'), function (n) { n.parentNode.removeChild(n); });
+			return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
+		} catch (e) {
+			return s.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+		}
+	};
+	// 表に無い合図は2通りある: 運用側の不備（no_start_points＝出発地が未設定。サーバーの文に頼む先が書いてある）と、
+	// WordPress 自身のエラー（致命的エラーの internal_server_error・rest_invalid_param など）。どちらも文は日本語なので、
+	// **外国語の画面には出さず**、その言語の汎用の文にする（2026-10-04。/en/ の画面に
+	// 「<p>サイトに重大なエラーが発生しました。</p>」とタグごと日本語が出た）。サーバーの文を出すのは日本語の画面だけで、タグは外す
 	var errorText = function (json) {
 		var known = json && own(ERRORS, json.code);
-		return known ? t(known[0], known[1]) : ((json && json.message) || '');
+		if (known) { return t(known[0], known[1]); }
+		var generic = t('errUnknown', 'うまくいきませんでした。時間をおいて、もう一度お試しください。');
+		if (!/^ja/i.test(document.documentElement.lang || '')) { return generic; }
+		return plainText(json && json.message) || generic;
 	};
 
 	// リンク先に使ってよいのは http(s) だけ。コースの中身はサーバーが組んだものだが、
@@ -116,6 +149,8 @@
 	// 仮名から中黒（・）と長音（ー）は外す（中国語の「电车・巴士」にも出る記号）
 	var PAGE_JA = /^ja/i.test(document.documentElement.lang || '');
 	var PAGE_ZH = /^zh/i.test(document.documentElement.lang || '') || /^zh/.test(String(T.lang || ''));
+	// 韓国語の時間の幅は「~」（スポットの営業時間・設問の選択肢「9시 반~17시경」と同じ記号。2026-10-04）
+	var PAGE_KO = /^ko/i.test(document.documentElement.lang || '') || /^ko/.test(String(T.lang || ''));
 	var jaAttr = function (text) {
 		var s = String(text || '');
 		if (PAGE_JA) { return ''; }
@@ -634,7 +669,7 @@ function mount(el, options) {
 		var gap = ja ? '' : ' ';
 		var dot = ja ? '・' : ' · ';
 		// 中国語の時間の幅は全角の「～」（スポットの営業時間の表示と同じ。2026-10-03 手直し 2巡目）
-		var range = ja ? '〜' : (PAGE_ZH ? '～' : '–');
+		var range = ja ? '〜' : (PAGE_ZH ? '～' : (PAGE_KO ? '~' : '–'));
 		var start = startName(plan);
 		// 「%s発」に出発地の名前を入れる。訳の無い名前（ホテル名）は名前だけを lang="ja" で包む（renderResult と同じ扱い）
 		var withOrigin = function (template) {
@@ -684,7 +719,6 @@ function mount(el, options) {
 				+ '<div class="ps-body"><p class="ps-depart">' + withOrigin(t('fromLabel', '%s発')) + '</p></div>'
 				+ '</div></li>');
 		}
-		var prevZone = null;
 		spots.forEach(function (s, i) {
 			// ひとつ前の場所からの移動（「徒歩9分・553m」「電車・バス16分・2.4km」）と、開店を待つ時間
 			var mode = modeCode(s.leg_mode, s.travel_by);
@@ -697,10 +731,8 @@ function mount(el, options) {
 			}
 			var wait = waitMinutes(s.wait_min);
 			if (wait) { leg.push(esc(fmt(t('waitOpen', '開くまで約%d分'), wait))); }
-			// エリア（歩いて回れるひとかたまり）が替わる所は、札を立てずに余白で区切る（CSS の .ps-row--zone）
-			var zone = (typeof s.zone === 'number') ? s.zone : null;
-			var newZone = i > 0 && zone !== null && prevZone !== null && zone !== prevZone;
-			prevZone = zone;
+			// 乗り物で別のエリアへ移る所は、札を立てずに余白で区切る（CSS の .ps-row--zone。境目の決め方は画面と同じ → zoneBreak）
+			var newZone = i > 0 && zoneBreak(s, spots[i - 1]);
 			var time = s.arrive
 				? '<b>' + esc(s.arrive) + '</b>' + (s.leave ? '<small>' + range + esc(s.leave) + '</small>' : '')
 				: '<b>' + (i + 1) + '</b>';
@@ -908,7 +940,7 @@ function mount(el, options) {
 		var dot = ja ? '・' : ' · ';
 		var dotEnd = ja ? '・' : ' ·'; // 項目の末尾に付けるとき（後ろの空白は項目の間に置く）
 		// 中国語の時間の幅は全角の「～」（スポットの営業時間の表示と同じ。2026-10-03 手直し 2巡目）
-		var range = ja ? '〜' : (PAGE_ZH ? '～' : '–');
+		var range = ja ? '〜' : (PAGE_ZH ? '～' : (PAGE_KO ? '~' : '–'));
 
 		// トップページの棚と同じ組み：時刻を上に置いた、トップと同じスポットのカード（.spot）の列。
 		// 写真は後から載せる（loadPhotos）。載るまでは、トップと同じ「名前の面」で受ける
@@ -925,7 +957,6 @@ function mount(el, options) {
 			if (attr) { name = '<span' + attr + '>' + name + '</span>'; }
 			return esc(template).replace(/%[ds]/, function () { return name; });
 		};
-		var prevZone = null;
 		var steps = spots.map(function (s, i) {
 			if (s.id) { ids.push(parseInt(s.id, 10)); }
 			// ひとつ前の場所（1件目は出発地）からの移動。1件目も必ず出す。
@@ -952,11 +983,9 @@ function mount(el, options) {
 			} else if (waitNote) {
 				leg = '<span class="rs-leg rs-leg--wait">' + waitNote + '</span>';
 			}
-			// 歩いて回れるひとかたまり（エリア）が替わる所。ここで乗り物に乗る、という境目なので、区切りを入れる。
+			// 乗り物に乗って別のエリアへ移る所に、区切りを入れる（歩く区間・エリア名が前と同じ所には出さない → zoneBreak）。
 			// エリアの番号を持たない古いコースには何も足さない
-			var zone = (typeof s.zone === 'number') ? s.zone : null;
-			var newZone = i > 0 && zone !== null && prevZone !== null && zone !== prevZone;
-			prevZone = zone;
+			var newZone = i > 0 && zoneBreak(s, spots[i - 1]);
 			var zoneMark = newZone ? '<span class="rs-zone">' + esc(t('nextZone', '次のエリアへ')) + '</span>' : '';
 			// 着く時刻を大きく、出る時刻を小さく（誌面のモデルコースと同じ）。時刻が無いときだけ順番の数字
 			var when = s.arrive

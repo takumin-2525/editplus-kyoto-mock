@@ -620,7 +620,13 @@
 				// もっと新しい取得が走っている。この応答は捨てる（座標も上書きしない）
 				if (mine !== seq) { return; }
 				if (!r.ok) {
-					var text = (r.json && r.json.message) || t('loadFailed', '読み込みに失敗しました。');
+					// WordPress 自身のエラー（致命的エラーの internal_server_error・rest_…）の文は、日本語でHTMLタグ付き。
+					// 画面に出さず、その言語の「読み込みに失敗しました」にする（2026-10-04。/en/nearby/ に
+					// 「<p>サイトに重大なエラーが発生しました。</p>」とタグごと出た。診断の側は quiz.js の errorText で同じ扱い）。
+					// こちらのRESTが返す合図（hotel_not_found など）の文は、サーバーがページの言語で書いているのでそのまま出す
+					var raw = String((r.json && r.json.message) || '');
+					var wpError = !raw || raw.indexOf('<') !== -1 || /^(internal_server_error|rest_)/.test(String((r.json && r.json.code) || ''));
+					var text = wpError ? t('loadFailed', '読み込みに失敗しました。') : raw;
 					if (place) { failPlace(text, r.json && r.json.code); return; }
 					// 京都の外は、近くの行き先もコースも出せない（サーバが同じ範囲で弾く）。ここで止めて次の一手を出す
 					forgetGeo();
