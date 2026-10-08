@@ -3,7 +3,7 @@ Theme Name: EditPlus Kyoto Concierge
 Theme URI: https://github.com/takumin-2525/editplus-web-renewal
 Author: 高速オフセット / 株式会社エディットプラス
 Description: 京都・大阪観光コンシェルジュ リニューアル用の自作テーマ。60_デザイン/kyoto-concierge-rough.html のデザインを再現。
-Version: 0.9.46
+Version: 0.9.71
 Requires at least: 6.0
 Requires PHP: 8.0
 Text Domain: editplus-kyoto
@@ -157,18 +157,40 @@ nav.main a:hover{opacity:1}
 @media (prefers-reduced-motion:reduce){.lang>summary,.lang .caret{transition:none}}
 
 /* ============ hero ============ */
-.hero{position:relative;min-height:94vh;display:flex;align-items:flex-end;color:#fff;overflow:hidden;
+/* 枠の縦横比は16:9（2026-10-06 の依頼。以前は高さ94vhで、スマホでは縦長に切れていた）。
+   ただしスマホ（840px以下）だけは 2026-10-07 に画面の高さへ戻した（案A。下の @media(max-width:840px)）。比率を変えるときは inc/hero-media.php の EDITPLUS_HERO_RATIO も揃える。
+   overflow を hidden にしないのは、文字が枠に収まらない幅で切れずに枠のほうが伸びるように（clip は最小の高さを保つ） */
+.hero{--hero-ratio:16/9;position:relative;aspect-ratio:var(--hero-ratio);display:flex;align-items:flex-end;color:#fff;overflow:clip;
   background:linear-gradient(160deg,#232b48 0%,#33436a 55%,#191b18 100%)}
-.hero .bg{position:absolute;inset:0}
+/* z-index:0 で .bg を閉じた重なりにする。無いと、入れ替え中の写真（z-index:1/2）や動画が .bg の外の幕（.scrim）より上に出て、文字の下が暗くならない */
+.hero .bg{position:absolute;inset:0;z-index:0}
 .hero .bg img,.hero .bg video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:saturate(.86) contrast(1.07) brightness(.82)}
 /* 動画は静止画（poster）の上で再生する。動きを減らす設定の端末では動画を出さず静止画のまま */
 .hero .bg video{z-index:1}
 @media (prefers-reduced-motion:reduce){.hero .bg video{display:none}}
+/* 写真を選んでいないときの入れ替え（2026-10-07。動かすのも秒数の正も app.js）。
+   次の写真は8%大きい状態から縮みながら、前の写真の上に重なって出る。前の写真を先に消さないので、途中で画面が暗く沈まない */
+.hero .bg .hero-slide{opacity:0}
+.hero .bg .hero-slide.is-on{opacity:1;z-index:1}
+.hero .bg .hero-slide.is-enter{z-index:2;animation:ep-hero-enter .8s ease-in-out both}
+@keyframes ep-hero-enter{from{opacity:0;transform:scale(1.08)}to{opacity:1;transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.hero .bg .hero-slide.is-enter{animation:none}}
+/* 写真の入れ替えを止めるボタン。画面には見せず、キーボードで選んだときだけ右下に出す（2026-10-07「切り替えのUIいらない」。
+   止める手段は残す → WCAG 2.2.2。inc/hero-media.php）。枠全体に重ねるが、押せるのはボタンだけ */
+.hero-ctl{position:absolute;inset:0;z-index:3;display:flex;align-items:flex-end;padding-bottom:59px;pointer-events:none}
+.hero-ctl[hidden]{display:none}
+.hero-ctl .wrap{width:100%;display:flex;justify-content:flex-end;align-items:center}
+.hero-pause{pointer-events:auto;display:grid;place-items:center;width:32px;height:32px;padding:0;border:0;background:none;color:#fff;cursor:pointer;opacity:0;filter:drop-shadow(0 0 3px rgba(0,0,0,.55))}
+.hero-pause:focus-visible{outline:2px solid #fff;outline-offset:2px;opacity:1}
+.hero-pause .i-play,.hero-pause[aria-pressed="true"] .i-pause{display:none}
+.hero-pause[aria-pressed="true"] .i-play{display:block}
 .hero .scrim{position:absolute;inset:0;background:
     linear-gradient(180deg,rgba(9,12,20,.52) 0%,rgba(9,12,20,0) 32%),
     linear-gradient(0deg,rgba(7,10,18,.88) 0%,rgba(7,10,18,.32) 40%,rgba(7,10,18,0) 70%),
     linear-gradient(90deg,rgba(24,30,56,.34),rgba(24,30,56,0) 58%)}
 .hero .inner{position:relative;z-index:2;width:100%;padding-bottom:74px}
+/* 横幅が広く縦の短い画面では、枠が画面より高くなり検索欄が下に隠れる。はみ出した分だけ文字を持ち上げる */
+@media (min-width:841px){.hero .inner{padding-bottom:max(74px,calc(100vw / (var(--hero-ratio)) - 100svh + 74px))}}
 /* .eyebrow は廃止（2026-09-21）。唯一の使用箇所だったQR帯の英字ラベルを外したので規則ごと削除 */
 .htitle{font-family:var(--mincho);font-weight:500;font-size:clamp(40px,6.2vw,76px);letter-spacing:var(--tr-display);
   margin:0;line-height:1.24;text-shadow:0 2px 30px rgba(0,0,0,.4)}
@@ -176,6 +198,8 @@ nav.main a:hover{opacity:1}
    ゴシック・字間控えめ・行間広めで、見出しの明朝と役割を分ける */
 .hsub{font-family:var(--gothic);font-size:clamp(14px,1.45vw,16px);letter-spacing:var(--tr-body);line-height:1.9;opacity:.92;
   max-width:36em;margin:22px 0 0}
+/* PC では 19px（2026-10-08 野口）。16px では、76px の見出しの下で注記のように小さく見えた。スマホ（840px 以下）は今までどおり */
+@media(min-width:841px){.hsub{font-size:19px}}
 /* クラス名は hero-search にする（.search だとWPが検索ページのbodyに付ける
    汎用クラス "search" と衝突してレイアウトが崩壊する） */
 .hero-search{margin-top:38px;display:flex;max-width:560px;background:rgba(255,255,255,.96);border-radius:2px;
@@ -415,6 +439,66 @@ section{padding:46px 0}
 .quiz--inline.quiz--plan .q-res{max-width:none;margin-top:0;padding-top:0;border-top:0}
 .r-reset[href]{text-decoration:none}
 
+/* ---- スマホの結果画面（2026-10-07 案B → 60_デザイン/2026-10-07_プランのスマホと帯の案.md） ----
+   4か所のコースで約4,300pxあり、写真の大きなカードが縦に4枚続いて「何時にどこへ」がひと目で見えなかった。
+   600px 以下では、先に「その日の流れ」を1枚の表で見せ、カードは横にすべらせて1枚ずつ見る。地図と共有は画面の下に固定する。
+   PC・タブレット（601px 以上）は今までどおり（ここで足す部品は出さない） */
+.rs-flow,.rs-nav,.r-dock,.ts-tg,.res-more,.r-again{display:none}
+@media(max-width:600px){
+  .res-head{margin-bottom:28px}
+  .res-h .r-reset{display:none}
+  .r-again{display:block;margin:22px 0 0;padding-top:18px;border-top:1px solid var(--line)}
+  .r-again .r-reset{font-family:var(--mincho);font-size:15px;letter-spacing:var(--tr-head);color:var(--sumi)}
+  /* 紹介文は3行で畳む（quiz.js の bindPhone が、収まらないときだけ「続きを読む」を足す） */
+  .res-desc.is-clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .res-more{display:inline-flex;align-items:center;min-height:44px;margin:0 0 -6px;padding:0;border:0;background:none;font:inherit;font-size:13px;color:var(--indigo);cursor:pointer}
+  /* 要点（「◯◯発」「歩いて回れるコース」「10:00〜13:55」…）は2列の枠に。札（コンシェルジュの提案）は枠の下に1行 */
+  .res-stats{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-top:16px;background:var(--card);border:1px solid var(--line);color:var(--sumi-soft)}
+  .res-stats>span:not(.res-badge){padding:10px 12px;border-bottom:1px solid var(--line);line-height:1.6}
+  .res-stats>span:not(.res-badge):nth-child(odd){border-right:1px solid var(--line)}
+  .res-badge{grid-column:1/-1;justify-self:start;margin:10px 12px;border:0;background:none;padding:0;color:var(--gold-ink)}
+  /* その日の流れ */
+  .rs-flow{display:block;margin:0 0 30px}
+  .rs-sub{margin:0 0 12px;font-family:var(--mincho);font-size:17px;font-weight:500;letter-spacing:var(--tr-head);color:var(--sumi)}
+  .rf-list{list-style:none;margin:0;padding:8px 16px;background:var(--card);border:1px solid var(--line)}
+  .rf-in{display:grid;grid-template-columns:3.2em minmax(0,1fr) auto;gap:10px;align-items:baseline;padding:9px 0;color:inherit;text-decoration:none}
+  a.rf-in .rf-n{text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:4px}
+  .rf-t{font-family:var(--serif);font-size:14px;color:var(--sumi-faint);font-variant-numeric:lining-nums}
+  .rf-n{font-family:var(--mincho);font-size:15px;line-height:1.5;color:var(--sumi);overflow-wrap:anywhere}
+  .rf-r{font-size:11px;color:var(--sumi-faint);white-space:nowrap}
+  .rf-leg{margin-left:calc(3.2em + 10px);padding:1px 0 1px 12px;border-left:1px solid var(--rule);font-size:11px;line-height:1.6;letter-spacing:var(--tr-display);color:var(--sumi-faint)}
+  .rf-leg--ride{color:var(--sumi);border-left-color:var(--sumi-soft)}
+  /* 行き先の見出しと、何枚目か・前後 */
+  .rs-nav{display:flex;align-items:center;gap:4px;margin:0 0 12px}
+  .rs-nav .rs-sub{margin:0 auto 0 0}
+  .rs-count{font-size:12px;color:var(--sumi-faint);margin-right:4px;font-variant-numeric:tabular-nums}
+  .rs-prev,.rs-next{width:44px;height:44px;border:0;background:none;font-size:16px;color:var(--sumi);cursor:pointer}
+  .rs-prev:disabled,.rs-next:disabled{color:var(--sumi-mute);cursor:default}
+  /* カードは横にすべらせる。次のカードの端を見せて、横に続くことを分からせる。.wrap の左右30pxを打ち消して画面の端まで */
+  .rs-grid{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding:0 30px;margin:0 -30px;padding:0 30px 4px;scrollbar-width:none;overscroll-behavior-x:contain}
+  .rs-grid::-webkit-scrollbar{display:none}
+  .rs-grid>.rs-step{flex:0 0 calc(100% - 40px);display:flex;flex-direction:column;scroll-snap-align:start}
+  /* 移動は流れの表に出したので、カードの上は時刻だけ */
+  .rs-when .rs-leg,.rs-when .rs-zone{display:none}
+  .rs-grid>.rs-step .rs-when{align-self:auto}
+  .rs-step--zone .rs-when{border-top:0;padding-top:0}
+  /* 営業時間など（押すと開く） */
+  .rs-step .ts-facts{display:none}
+  .rs-step.is-facts .ts-facts{display:block}
+  .ts-tg{display:inline-flex;align-items:center;gap:4px;margin-left:auto;padding:13px 0;margin-top:-13px;margin-bottom:-13px;border:0;background:none;font:inherit;font-size:12px;color:var(--sumi-faint);cursor:pointer}
+  .ts-tg::after{content:"";width:6px;height:6px;border-right:1px solid currentColor;border-bottom:1px solid currentColor;transform:translateY(-2px) rotate(45deg);transition:transform .2s}
+  .ts-tg[aria-expanded="true"]::after{transform:translateY(1px) rotate(-135deg)}
+  /* カードの下の「Googleマップでルートを開く」は元の場所にも残す（下に固定したボタンだけにしたら「全体のルートが消えた」に見えた。2026-10-07）。
+     同じボタンが2つ並ばないよう、こちらが画面に見えているあいだは下のボタンを隠す（quiz.js の bindPhone） */
+  /* 画面の下に固定するボタン。結果の中にいるあいだだけ付いてくる（結果を過ぎたら、ページの続きと一緒に流れる） */
+  .r-dock{display:flex;gap:10px;position:sticky;bottom:0;z-index:20;margin:24px -30px 0;padding:12px 30px calc(12px + env(safe-area-inset-bottom));background:var(--card);border-top:1px solid var(--line)}
+  .r-dock-map{flex:1;display:flex;align-items:center;justify-content:center;min-height:48px;padding:0 10px;background:var(--indigo);color:#fff;font-size:14px;letter-spacing:var(--tr-body);text-decoration:none;text-align:center}
+  .r-dock-keep{flex:none;min-height:48px;padding:0 18px;border:1px solid var(--sumi);background:none;font:inherit;font-size:14px;letter-spacing:var(--tr-body);color:var(--sumi);cursor:pointer}
+  .r-dock-keep:only-child{flex:1}
+  .r-dock{transition:transform .25s ease,visibility .25s}
+  .r-dock.is-off{transform:translateY(100%);visibility:hidden}
+}
+
 /* feature: 特集
    おすすめ情報と同じく、箱（白地＋枠線）は使わない（2026-09-16 監査 → 案A）。
    写真を和紙の地に直接置き、その右に文字を積む。囲いが無いぶん、写真と文字のあいだの
@@ -427,7 +511,6 @@ section{padding:46px 0}
 .feature .body{padding:0;display:flex;flex-direction:column;align-items:flex-start}
 .feature h3{font-family:var(--mincho);font-size:clamp(25px,3.2vw,36px);letter-spacing:var(--tr-body);line-height:1.5;margin:14px 0 18px;font-weight:600}
 .feature p{color:var(--sumi-soft);font-size:15px;margin:0 0 22px;max-width:44ch}
-.byline{font-size:12px;color:var(--sumi-faint);letter-spacing:var(--tr-head)}
 .feature .btn{margin-top:24px}
 
 /* editors strip: 編集部が通う店（rough.html の .strip/.tcard 移植） */
@@ -653,11 +736,6 @@ section{padding:46px 0}
 .page-main--after-hero{padding:72px 0 88px}
 .breadcrumb{font-size:12px;color:var(--sumi-faint);margin-bottom:26px;letter-spacing:var(--tr-head)}
 .breadcrumb a:hover{color:var(--sumi)}
-/* 札は縮ませずに次の行へ回す（2026-10-03。BUGS #16）。折り返しが無く、360px以下で「東福寺・伏見稲荷大／社周辺」と
-   丸い枠の中で2行に折れ、高さ68pxの楕円になっていた */
-.single-head .meta-top{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
-.single-head .meta-top .chip{white-space:nowrap}
-.chip--cat{border-color:var(--indigo-soft);color:var(--indigo-soft)}
 .single-title{font-family:var(--mincho);font-size:clamp(27px,4vw,42px);letter-spacing:var(--tr-meta);font-weight:600;margin:0 0 30px;line-height:1.4}
 /* 1語が行より長い見出し（英字だけの店名「KYOTO KAWARAMACHI GARDEN FOOD HALL」・カタカナの長い1語）は、その語だけ途中で折る
    （2026-10-03。BUGS #36）。文節で折る指定（auto-phrase）だけでは折る所が無く、html,body{overflow-x:clip} で右端が切れて見えなかった。
@@ -855,92 +933,145 @@ section{padding:46px 0}
 .nearby-located .nearby-main{padding-top:56px}
 .nearby-main .hotel-section:first-child{margin-top:0}
 
-.single-hero{margin:0 0 36px}
 /* 写真クレジット（撮影者・提供元）。本文の邪魔をしないよう写真の右下に小さく添える */
 .photo-credit{margin:8px 0 0;font-size:11px;line-height:1.5;letter-spacing:var(--tr-body);color:var(--sumi-faint);text-align:right}
+/* ホテルのページ（single-hotel.php）の紹介文。スポット詳細と特集記事の本文は「記事の型」の .entry-body */
 .single-body{max-width:70ch;color:var(--sumi-soft);font-size:15px}
-/* スポットの本文は写真の下の中央に置く。写真は枠いっぱい（1140px）なのに文字だけ左に寄ると、
-   右半分が空いて書きかけに見えた（ユーザー指摘）。写真主役の .pf-text と同じ置き方にそろえる */
-.single-spot .single-body{margin-left:auto;margin-right:auto}
 
-/* ---- スポット記事の型（複数写真の組み方 → templates/spot-layout-*.php） ----
-   変わるのは写真と本文の組み方だけ。基本情報・地図・回遊はどの型でも同じ位置に出る。
-   写真は広く取ってよいが、**文字の幅は型が変わっても変えない**（60〜70ch）。
-   誌面風だけ本文が狭く見える、といった差が出ると同じサイトに見えなくなる */
-.spot-photo{margin:0}
-.spot-photo .imgwrap{display:block}
-/* 写真を2枚ずつ。3枚以上を1行に詰めると1枚が小さくなり、一覧の写真と区別がつかなくなる */
-.spot-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:0 0 30px}
-
-/* 上のスライド。1枚が枠いっぱいで、次の1枚の端をのぞかせて横に続くことを見せる */
-.single-hero--slider{margin-bottom:30px}
-/* 横スクロールの棒は出さない。写真1枚ごとに送る欄なので、棒があっても掴む余地がないうえ、
-   写真のすぐ下に灰色の線が1本走って額縁が濁る。いま何枚目かは下の点が伝える
-   （カードを並べる欄のほうは、指で流す量が連続なので棒を残している） */
-.ep-hero-slider__list{gap:12px;padding-bottom:0;scrollbar-width:none;-ms-overflow-style:none}
-.ep-hero-slider__list::-webkit-scrollbar{display:none}
-.ep-hero-slider__item{flex:0 0 100%;scroll-snap-align:center}
-/* 送りのボタンは写真の上に乗る。地が写真で固定されないので、白を敷いてから墨で描く
-   （枠線だけだと、暗い写真では輪郭が消え、明るい写真では矢印が消える） */
-.ep-hero-slider .ep-slider__btn--float{background:rgba(255,255,255,.92);border-color:rgba(255,255,255,.92);color:var(--sumi)}
-.ep-hero-slider .ep-slider__btn--float.ep-slider__btn--prev{left:14px}
-.ep-hero-slider .ep-slider__btn--float.ep-slider__btn--next{right:14px}
-/* 押せないときも枠は残す。既定の opacity:.45 は白い地ごと薄くするので、
-   写真の上では「消えかけたボタン」になり、壊れているのか端なのか分からない */
-.ep-hero-slider .ep-slider__btn--float:is(:disabled,[aria-disabled="true"]){opacity:1;background:rgba(255,255,255,.55);border-color:rgba(255,255,255,.55);color:var(--sumi-mute)}
-/* いま何枚目か。丸ではなく角（このサイトには丸の言語が無い → .ep-slider__btn と同じ理由） */
 .ep-slider__dots{list-style:none;display:flex;justify-content:center;gap:9px;margin:14px 0 0;padding:0}
 .ep-slider__dot{display:block;width:8px;height:8px;padding:0;border:1px solid var(--sumi-mute);background:none;cursor:pointer;transition:background-color .3s,border-color .3s}
 .ep-slider__dot[aria-current="true"]{background:var(--indigo);border-color:var(--indigo)}
 
-/* 誌面風。写真と本文を左右交互に組む。文字が入る側は6、写真は5（写真が主張しすぎない比） */
-.single-body--magazine,.single-body--photo-first{max-width:none}
-/* 文は写真の高さの真ん中に置く。上端で揃えると、段落が2〜3行しかないとき
-   写真の下半分ぶんの余白が文の下に空き、「書きかけ」に見える */
-.mag-row{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:44px;align-items:center;margin:0 0 54px}
-.mag-row--flip .mag-photo{order:2}
-.mag-text{max-width:60ch;color:var(--sumi-soft);font-size:15px}
-.mag-text>:first-child{margin-top:0}
+/* ============ 記事の型（スポット詳細・特集記事。2026-10-08 → inc/entry.php） ============
+   スポット詳細（single-spot.php）と特集記事（single.php）は、同じ1つの型で出す。
+   「普通のWEB記事っぽくして」「特集記事はスタイルが違っていて変。Spot記事と同じデザインにして」（野口）。
+   それまでは別々に書かれていて（.sp-* の誌面の見開き／.single-post の細い柱＋本文より広い写真）、題名の大きさ・札の形・
+   写真の扱い・本文の幅・見出しの形・背景が全部違った。
+   **この2ページの見た目はここだけに書く。**片方のテンプレートだけに効く指定（.single-spot … / .single-post …）を足さないこと。
+   ・柱は1本（720px・中央）。パンくず・札・題名・一言・写真・本文・基本情報が同じ左端にそろう
+   ・背景は1色（帯ごとに色を変えない）。区切りは罫線と余白だけ
+   ・写真は題名の下に、元の比率のまま。文字を写真に重ねない
+   ・写真は**引き伸ばさない**。誌面から取った写真は横167〜600pxが多く（1枚目が柱の幅に届くのは326件中193件）、
+     柱いっぱいに広げるとぼける。出してよい幅（元の1.2倍まで）は PHP が --ph-max で渡し、小さい写真は柱の左端に置く */
+.entry{max-width:720px;margin:0 auto}
+.entry .breadcrumb{margin-bottom:30px}
+.entry-head{margin:0 0 34px}
+/* 札は文字（丸いチップにしない）。スポットはエリアとジャンル（一覧へのリンク）、記事はPRの印とタグ。
+   2つの札はカードの「京都駅周辺｜和食」と同じ区切りでつなぐ */
+.entry-labels{margin:0 0 12px;font-size:13px;line-height:1.7;letter-spacing:var(--tr-body);color:var(--sumi-soft)}
+.entry-labels a{text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:.3em}
+.entry-labels a:hover{color:var(--sumi);text-decoration-color:currentColor}
+.entry-labels-sep{color:var(--sumi-mute)}
+.entry-labels .pr-mark{display:inline-block;margin-right:10px;padding:0 6px;border:1px solid currentColor;font-size:12px;line-height:1.6;letter-spacing:var(--tr-meta)}
+/* 1語が行より長い題名（英字だけの店名・カタカナの長い1語）は、その語だけ途中で折る（.single-title と同じ。BUGS #36）。
+   行の長さはどの言語でもそろえる（日本語は base の指定で文節ごと。韓国語で「…교토역／앞점」と最後の行に1語だけ落ちた） */
+.entry-title{font-family:var(--mincho);font-size:clamp(26px,3.4vw,38px);font-weight:600;line-height:1.5;letter-spacing:var(--tr-head);color:var(--sumi);margin:0;
+  overflow-wrap:anywhere;text-wrap:balance}
+/* 題名の下の一言。記事は「取材・文｜編集部　日付」、スポットは最寄り駅（一言で書けるときだけ） */
+.entry-meta{margin:14px 0 0;font-size:13px;line-height:1.7;letter-spacing:var(--tr-body);color:var(--sumi-faint)}
 
-/* 写真主役。1枚目を大きく、そのあとは2枚ずつ。本文は写真の間に中央で置く */
-.pf-lead{margin:0 0 30px}
-/* 2枚ずつ並べて1枚余ったときは、左に寄せず真ん中に置く（片側だけ空くと並べ忘れに見える）。
-   大きさは2列のときと同じにして、小さい写真を引き伸ばさない */
-.single-body--photo-first .spot-grid>.spot-photo:only-child{grid-column:1/-1;justify-self:center;width:calc((100% - 18px)/2)}
-.pf-text{max-width:70ch;margin:0 auto 36px;color:var(--sumi-soft);font-size:15px}
-.pf-text>:first-child{margin-top:0}
+/* 写真1枚。1枚目（--lead）にも、残りの写真の並びにも同じ部品を使う。枠で切らない・引き伸ばさない */
+.entry-photo{margin:0;max-width:min(100%,var(--ph-max,100%))}
+.entry-photo img{display:block;width:100%;height:auto}
+.entry-photo--lead{margin-bottom:40px}
 
-@media(max-width:720px){
-  /* 左右に組むには幅が足りない。写真→本文の縦並びに落とす（順番は本文の並びどおり） */
-  .mag-row{grid-template-columns:1fr;gap:18px;margin-bottom:38px}
-  .mag-row--flip .mag-photo{order:0}
-  /* 2枚並べると1枚が親指ほどになる。何が写っているか分からない写真は出す意味が無い */
-  .spot-grid{grid-template-columns:1fr;gap:14px}
-  .single-body--photo-first .spot-grid>.spot-photo:only-child{width:auto}
-  .ep-hero-slider .ep-slider__btn--float.ep-slider__btn--prev{left:8px}
-  .ep-hero-slider .ep-slider__btn--float.ep-slider__btn--next{right:8px}
-}
-.infobox{background:var(--panel);border:1px solid var(--line);padding:28px;margin-top:44px}
-.infobox-title{font-family:var(--mincho);font-size:19px;letter-spacing:var(--tr-meta);font-weight:600;margin:0 0 16px}
-.infotable{width:100%;border-collapse:collapse;font-size:14px}
-.infotable th{font-family:var(--mincho);text-align:left;white-space:nowrap;padding:10px 24px 10px 0;color:var(--sumi);font-weight:600;letter-spacing:var(--tr-body);border-bottom:1px solid var(--line);vertical-align:top}
-.infotable td{padding:10px 0;color:var(--sumi-soft);border-bottom:1px solid var(--line)}
-/* 見出しにアイコンが付いて（2026-10-03）右の欄が約20px狭くなった。スマホで「阪急大宮駅から徒歩5／分」と最後の行に1字だけ落ちたので、
-   見出しと値の間を詰め、値は最後の行を短くしすぎない折り方にする */
-.infotable td{text-wrap:pretty}
-@media(max-width:600px){.infotable th{padding-right:14px}}
-/* 外国語のページ（2026-10-03）: 見出しが長く（「공식 사이트」「Estación más cercana」）、値に折る所の無い語（公式サイトのドメイン・
-   ローマ字の住所）が来ると、表が枠より広がって右の罫が枠からはみ出した（韓国語のスマホ幅で約10px）。値は語の途中でも折る */
-.infotable td{overflow-wrap:anywhere}
-.mapbox{margin-top:44px;overflow:hidden}
+/* 本文。ふつうの段落（最初の一文を大きくしない・左右に分けない） */
+.entry-body{font-size:16px;line-height:2.05;letter-spacing:var(--tr-body);color:var(--sumi)}
+.entry-body>:first-child{margin-top:0}
+.entry-body>:last-child{margin-bottom:0}
+.entry-body p{margin:0 0 1.7em}
+/* 見出しは明朝＋上の罫線（文書のページ .doc-body と同じ作法）。「基本情報」（.entry-h2）も本文の中の見出しと同じ形 */
+.entry-body h2,.entry-h2{font-family:var(--mincho);font-size:clamp(21px,2.3vw,25px);font-weight:600;line-height:1.55;letter-spacing:var(--tr-head);color:var(--sumi);
+  margin:68px 0 24px;padding-top:28px;border-top:1px solid var(--line)}
+.entry-body h3{font-family:var(--mincho);font-size:19px;font-weight:600;line-height:1.6;letter-spacing:var(--tr-head);color:var(--sumi);margin:44px 0 14px}
+.entry-body a{color:inherit;text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:.3em}
+.entry-body a:hover{text-decoration-color:currentColor}
+.entry-body ul,.entry-body ol{margin:0 0 1.7em;padding-left:1.4em}
+.entry-body li{margin:0 0 .4em}
+.entry-body blockquote{margin:0 0 1.7em;padding-left:20px;border-left:2px solid var(--rule);color:var(--sumi-soft)}
+/* 本文の中の画像。幅を 100% と書かない（小さい画像を柱いっぱいに引き伸ばさない。img の width 属性の大きさで出て、柱より大きければ柱で止まる） */
+.entry-body .wp-block-image{margin:40px 0}
+.entry-body .wp-block-image img{display:block;max-width:100%;height:auto}
+.entry-body figcaption{margin-top:8px;font-size:12px;line-height:1.7;letter-spacing:var(--tr-body);color:var(--sumi-faint)}
+/* 表。WPの表ブロックは全セルに黒い枠線を引く（.wp-block-table td,th{border:1px solid}）。横の罫線だけにする（.doc-body と同じ）。
+   列が多くて柱に入らない表は、表の中だけ横に送る（ページごと横に動かさない） */
+.entry-body .wp-block-table{margin:0 0 1.7em;overflow-x:auto}
+.entry-body table{width:100%;border-collapse:collapse;margin:0 0 1.7em;font-size:15px;line-height:1.8}
+.entry-body .wp-block-table table{margin:0}
+/* 列の幅は編集画面の指定のまま（WPの表ブロックは既定で等分＝has-fixed-layout）。中身に合わせる（table-layout:auto）と、
+   スマホで短い列が詰められて地名が「四条／河原／町」と折れたので、こちらでは上書きしない（2026-10-08 に試して戻した） */
+.entry-body th,.entry-body td,.entry-body .wp-block-table th,.entry-body .wp-block-table td{text-align:left;vertical-align:top;padding:12px 16px 12px 0;border:0;border-bottom:1px solid var(--line)}
+.entry-body th,.entry-body .wp-block-table th{font-weight:500;color:var(--sumi)}
+.entry-body thead th,.entry-body .wp-block-table thead th{font-size:13px;color:var(--sumi-soft);border-bottom-color:var(--rule)}
+.entry-body .wp-block-table thead{border-bottom:0}
+.entry-body td{color:var(--sumi)}
+
+/* 残りの写真（スポットの2枚目から）。2枚ずつの行で、行の中は高さがそろう（幅を「幅÷高さ」の比 --ph-ratio で分け合う）。
+   小さい写真のある行は --ph-max で止まり、行ごと左に寄る。番号は振らない。スマホは1枚ずつ縦に（横にすべらせない） */
+.entry-gallery{display:flex;flex-direction:column;gap:16px;margin:44px 0 0}
+.entry-gallery-row{display:flex;align-items:flex-start;gap:16px}
+.entry-gallery-row .entry-photo{flex:var(--ph-ratio,1) 1 0%;min-width:0}
+
+/* 基本情報と地図。本文と同じ柱に、本文の見出しと同じ形の見出しで。
+   section 要素の既定の padding（46px）は打ち消す。残すと、見出しの上の空きが本文の中の見出しより46px広くなる */
+.entry-info{padding:0}
+.infotable{width:100%;border-collapse:collapse;font-size:15px}
+.infotable th{font-family:var(--gothic);font-weight:500;font-size:13px;line-height:27px;text-align:left;white-space:nowrap;vertical-align:top;
+  color:var(--sumi-soft);letter-spacing:var(--tr-body);width:9em;padding:13px 24px 13px 0;border-bottom:1px solid var(--line)}
+.infotable th .ep-icon{color:var(--sumi-faint)}
+/* 値は最後の行を短くしすぎない折り方に（「阪急大宮駅から徒歩5／分」と1字だけ落ちていた）。折る所の無い語（公式サイトのドメイン・
+   ローマ字の住所）は語の途中でも折る（外国語のページで表が枠より広がって、右の罫がはみ出した） */
+.infotable td{line-height:27px;padding:13px 0;color:var(--sumi);border-bottom:1px solid var(--line);text-wrap:pretty;overflow-wrap:anywhere}
+.infotable td a{text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:.3em}
+.infotable td a:hover{text-decoration-color:currentColor}
+@media(max-width:600px){.infotable th{padding-right:14px;width:auto}}
+.entry-map{margin-top:32px}
+.entry-h2+.entry-map{margin-top:0} /* 表が無く、地図だけのスポット */
 /* iOSのSafariは iframe を中身の幅に広げようとし、width:100% を無視してページを横に伸ばすことがある。
    width を小さく置いて min-width で100%にすると、iOSでも枠の幅に収まる（定番の回避策） */
-.map{width:1px;min-width:100%;height:380px;border:1px solid var(--line)}
+.map{display:block;width:1px;min-width:100%;height:360px;border:1px solid var(--line)}
+.entry-map-link{margin:10px 0 0;font-size:13px;letter-spacing:var(--tr-body);color:var(--sumi-soft)}
+.entry-map-link a{text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:.3em}
+.entry-map-link a:hover{color:var(--sumi);text-decoration-color:currentColor}
 
 /* ---- 回遊セクション（スポット・記事詳細の読み終わり） ----
-   section 要素の既定 padding:88px を打ち消す。infobox の間隔（44px）より
-   一段広い 64px を空けて、「本文はここまで」という区切りに見せる */
+   section 要素の既定の padding（46px）を打ち消す。記事の柱（720px）のあと、棚はサイトの幅（1200px）に戻る。
+   見出しは題名（38px）より小さくする。トップの欄の大きさ（46px）のままだと、記事の題名より「あわせて読みたい」が大きく見えた */
 .related{padding:0;margin-top:64px}
+.entry-main .related{margin-top:72px}
+.entry-main .entry+.related{margin-top:104px}
+.entry-main .related .shead .ttl{font-size:clamp(22px,2.6vw,30px)}
+.entry-main .related .rule{margin:18px 0 30px}
+
+/* 欧文（英語・スペイン語）は、和文の行間・字間のままだと間延びする。読み物の寸法を一段詰める */
+:is(:lang(en),:lang(es)) .entry-title{line-height:1.35;letter-spacing:var(--tr-display)}
+:is(:lang(en),:lang(es)) .entry-body{line-height:1.85;letter-spacing:var(--tr-display)}
+
+@media(max-width:840px){
+  .entry .breadcrumb{margin-bottom:22px}
+  .entry-head{margin-bottom:26px}
+  .entry-photo--lead{margin-bottom:32px}
+  .entry-body h2,.entry-h2{margin-top:52px;padding-top:24px}
+  .entry-gallery{margin-top:36px}
+  .map{height:280px}
+  .entry-main .related{margin-top:60px}
+  .entry-main .entry+.related{margin-top:76px}
+}
+@media(max-width:780px){
+  /* スマホの1枚目の写真：画面の幅まで出せる大きさ（--ph-max が画面の幅以上）なら、左右の余白（.wrap の30px）を打ち消して
+     画面の端まで広げる。届かない小さい写真は、柱の左端のまま（引き伸ばさない）。
+     --bleed は「広げるなら -30px、広げないなら 0」。差に大きな数を掛けて clamp で2つの値に倒している。
+     780px は柱（720px）＋左右の余白。これより広い画面では柱の外に余白があり、30px では端に届かない */
+  .entry-photo--lead{--bleed:clamp(-30px,calc((100vw - var(--ph-max,9999px)) * 9999),0px);
+    margin-left:var(--bleed);margin-right:var(--bleed);max-width:min(calc(100% - 2 * var(--bleed)),var(--ph-max,9999px))}
+  /* 端まで広げた写真のクレジットは、本文と同じ右端に戻す（画面の端に貼り付かないように） */
+  .entry-photo--lead .photo-credit{padding-right:calc(-1 * var(--bleed))}
+}
+@media(max-width:600px){
+  /* 残りの写真は1枚ずつ縦に。幅は柱か、元の1.2倍（--ph-solo）までの小さいほう */
+  .entry-gallery-row{flex-direction:column}
+  .entry-gallery-row .entry-photo{flex:none;width:100%;max-width:min(100%,var(--ph-solo,var(--ph-max,100%)))}
+}
 
 /* qr: 取材コンセプトのバナー（rough.html の .qr 移植） */
 .qr{position:relative;color:#fff;padding:56px 0;overflow:hidden}
@@ -953,27 +1084,37 @@ section{padding:46px 0}
 .qr .eyebrow{margin-bottom:12px}
 
 /* ============ footer ============ */
-/* 中身が1行しか無いフッターに上下110pxの余白を取っていて、ページの末尾が間延びしていた。
-   級数を上げた（12.5→15px）うえで余白も詰め、152px → 110px 前後に収めた（2026-09-17）。
-   上を下より狭くしてあるのは、上には罫線があって境目が既に見えているから */
-.site-footer{border-top:1px solid var(--line);padding:30px 0 38px;color:var(--sumi-soft);font-size:15px}
-.fbar{display:flex;justify-content:space-between;flex-wrap:wrap;gap:22px;align-items:center}
-/* 字送り .14em のぶん横に伸びるので、24px 固定だと 320px 幅で1行に入らない（実測299px＞中身幅260px） */
-.fbrand{font-family:var(--mincho);font-size:clamp(19px,5vw,24px);letter-spacing:var(--tr-meta);color:var(--sumi)}
-/* 入らないときはリンク単位で次の行へ回す（2026-10-03。BUGS #14）。折り返しが無く2つのリンクが幅を分け合って縮み、
-   360pxで「ホテル／いまいる場所か／ら」「デジタルブッ／ク」と語の途中で折れていた */
-.fnav{display:flex;flex-wrap:wrap;gap:8px 26px}
-.fnav a{white-space:nowrap}
-.fnav a:hover{color:var(--sumi)}
-/* 著作権表記だけは一段落とす。名乗り（ロゴ）とリンクより前に出ると、目が最初にここへ行く */
-.fcopy{font-size:14px;letter-spacing:var(--tr-head)}
-/* お問い合わせ・プライバシーポリシーは著作権表記と同じ一段落とした組に入れる（巡る入口の .fnav と並べない） */
-.fmeta{display:flex;flex-wrap:wrap;align-items:center;gap:8px 24px;font-size:14px;letter-spacing:var(--tr-head)}
-.flegal{display:flex;flex-wrap:wrap;gap:8px 20px}
-.flegal a:hover{color:var(--sumi)}
+/* 2026-10-07 確定版 案A：名乗り＋三列（サイトの案内／冊子／お問い合わせ）、罫線の下に著作権と言語。
+   地は墨の濃い色（2026-10-07「フッターの背景色濃くして他のコンテンツと差別化したい」）。
+   和紙の地に罫線1本だけでは本文の続きに見えた。藍ではなく墨にしたのは、トップの最後の帯（.qr）が藍の幕で、続けると1枚に見えるため。
+   文字の色は墨の地の上の比：名乗り・リンク 14.0／説明 9.3／見出しの金 8.0／著作権・言語 6.6（どれも本文の基準 4.5 を満たす） */
+.site-footer{--ft-bg:#1f211d;--ft-ink:#efeee8;--ft-soft:#c3c5bd;--ft-faint:#a3a79d;--ft-gold:#c9b47a;--ft-line:rgba(255,255,255,.14);
+  background:var(--ft-bg);padding:80px 0 36px;color:var(--ft-soft)}
+.site-footer a:focus-visible{outline:2px solid var(--ft-ink);outline-offset:2px}
+.ftop{display:flex;gap:80px;align-items:flex-start}
+.fabout{flex:1;min-width:0;display:flex;flex-direction:column;gap:14px}
+.fbrand{font-family:var(--mincho);font-size:24px;letter-spacing:var(--tr-meta);color:var(--ft-ink);line-height:1.7}
+.fabout p{margin:0;font-size:14px;line-height:1.9;letter-spacing:var(--tr-head);max-width:26em}
+.fcol{width:200px;flex:none}
+.fcol h2{font-family:var(--gothic);font-weight:400;font-size:13px;letter-spacing:var(--tr-meta);color:var(--ft-gold);margin:0 0 12px;line-height:1.7}
+.fcol ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.fcol a{font-size:14px;letter-spacing:var(--tr-head);color:var(--ft-ink);line-height:1.7}
+.fcol a:hover{color:var(--ft-gold)}
+.fbottom{margin-top:56px;padding-top:28px;border-top:1px solid var(--ft-line);display:flex;justify-content:space-between;align-items:flex-start;gap:16px;
+  font-size:12px;letter-spacing:var(--tr-meta);color:var(--ft-faint)}
+.flangs{display:flex;flex-wrap:wrap;gap:6px 16px}
+.flangs a:hover{color:var(--ft-ink)}
+.flangs [aria-current]{color:var(--ft-ink)}
+@media(max-width:1100px){.ftop{gap:40px}.fcol{width:auto}}
+@media(max-width:840px){
+  .site-footer{padding:48px 0 36px}
+  .ftop{flex-direction:column;gap:32px}
+  .fbrand{font-size:20px}
+  .fbottom{margin-top:28px;flex-direction:column}
+}
 
 /* ============ 文書のページ（page.php：プライバシーポリシーなど）と、お問い合わせ（contact.php） ============
-   読むための1段組。幅は記事（.single-post）と同じ 720px、見出しは明朝＋上の罫線。
+   読むための1段組。幅は記事の型（.entry）と同じ 720px、見出しは明朝＋上の罫線。
    記事と違って写真も署名も無いので、題のすぐ下から本文を始める */
 .doc{max-width:720px;margin:0 auto}
 .doc-title{font-family:var(--mincho);font-size:clamp(27px,4vw,40px);letter-spacing:var(--tr-meta);font-weight:600;line-height:1.4;margin:0 0 34px;color:var(--sumi)}
@@ -1089,7 +1230,7 @@ body.error404 .page-main{flex:1 0 auto}
    ボタンは ≡ の文字ではなく1pxの線2本（ロゴの欧文ラベルと同じ細さ）。
    項目は罫線で区切らず、余白と番号で並べ、開くときに上から順に現れる */
 .menu-btn,.mclose{background:none;border:0;color:inherit;cursor:pointer;width:32px;height:32px;padding:0;
-  display:none;align-items:center;justify-content:center;margin-left:auto}
+  display:inline-flex;align-items:center;justify-content:center;margin-left:auto}
 .mclose{display:inline-flex;margin:0}
 .menu-lines{display:inline-block;width:22px;height:11px;position:relative}
 .menu-lines i{position:absolute;left:0;right:0;height:1px;background:currentColor;
@@ -1118,8 +1259,15 @@ body.error404 .page-main{flex:1 0 auto}
 .mnav.open .mlinks a{opacity:1;transform:none;transition-delay:calc(.14s + var(--i,0)*.06s)}
 .mlinks--sub{padding-top:16px;margin-top:16px;border-top:1px solid var(--line)}
 .mlinks--sub a{font-family:var(--gothic);font-size:15px;letter-spacing:var(--tr-head);padding:11px 0;color:var(--sumi-soft)}
+/* 中段の見出し。リンクと同じ出方で現れる（見出しだけ先に出ていると、空の段に見える） */
+.mlinks-label{margin:0 0 4px;font-family:var(--gothic);font-size:11px;letter-spacing:var(--tr-label);color:var(--sumi-faint);
+  opacity:0;transition:opacity .45s ease}
+.mnav.open .mlinks-label{opacity:1;transition-delay:calc(.14s + var(--i,0)*.06s)}
+/* 下段（冊子・お問い合わせ）。中段より控えめに、最後に置く */
+.mlinks--foot{padding-bottom:32px}
+.mlinks--foot a{font-size:13px;padding:8px 0}
 @media (prefers-reduced-motion:reduce){
-  .mnav,.mnav-scrim,.mnav-panel,.mlinks a,.menu-lines i{transition:none}
+  .mnav,.mnav-scrim,.mnav-panel,.mlinks a,.mlinks-label,.menu-lines i{transition:none}
 }
 
 /* ============ 言語（スマホ）：ヘッダーのボタン＋下から上がるシート ============
@@ -1220,7 +1368,20 @@ body.error404 .page-main{flex:1 0 auto}
   .brand .en{font-size:7.5px;letter-spacing:.18em;white-space:nowrap}
   .lang-btn{gap:6px;padding:4px 2px;font-size:12px}
   .lang-btn .globe{width:17px;height:17px}
+  /* スマホはヒーローを画面の高さにして、写真を縦長に切る（2026-10-07 案A。Figma「スマホのファーストビューの案」）。
+     以前は16:9の写真の下に紺の帯を付けていたが、844pxの画面の下3分の1に「おすすめ情報」まで入り、情報過多だった。
+     PCと同じ切り取り（10/6）はスマホでは外れる。どこを残すかは管理画面の「切り取る位置」。同梱の3枚は真ん中で切って、池・山・舟が残ることを確かめた。
+     高さは min-height（文字の長い言語で中身が画面より高くなれば枠が伸びる）。560px は横向きなど低い画面での下限 */
+  .hero{aspect-ratio:auto;min-height:max(560px,100vh);min-height:max(560px,100svh)}
+  .hero .scrim{background:
+      linear-gradient(180deg,rgba(9,12,20,.5) 0%,rgba(9,12,20,0) 25%),
+      linear-gradient(0deg,rgba(7,10,18,.9) 0%,rgba(7,10,18,.55) 35%,rgba(7,10,18,0) 62%)}
+  .hero .inner{padding:0 0 calc(92px + env(safe-area-inset-bottom))}
+  /* 下にまだ続くことを示す細い線（文字は置かない） */
+  .hero::after{content:"";position:absolute;z-index:2;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));width:1px;height:40px;background:rgba(255,255,255,.6)}
   .htitle{font-size:38px}
+  .hsub{margin-top:14px}
+  .hero-search{margin-top:24px}
   .hero-search button{padding:0 20px}
   .hero-search input{font-size:16px} /* 16px未満だと iPhone が検索欄に合わせてページを拡大する（BUGS #10） */
   section{padding:34px 0}
@@ -1307,13 +1468,6 @@ body.error404 .page-main{flex:1 0 auto}
   .chips-subwrap,.chip-toggle .caret{transition:none}
 }
 
-/* SNSリンク（フッターのみ。ヘッダー・モバイルメニューには置かない） */
-/* アイコンの寸法はSVGのwidth/height（20px）ではなくここで決める。フッターの級数に合わせて上げた */
-.fsocial{display:flex;gap:18px;align-items:center}
-.fsocial a{color:var(--sumi-soft);display:inline-flex;transition:color .2s}
-.fsocial a:hover{color:var(--sumi)}
-.fsocial svg{width:26px;height:26px}
-
 /* ===== バナー（トップ。外部サイトへ。管理画面「トップページの設定」で登録） ===== */
 .top-banners{padding:30px 0}
 /* 横一列のスライド（2026-09-16 の依頼）。バナーと「おすすめ情報」で共通。
@@ -1394,7 +1548,6 @@ body.error404 .page-main{flex:1 0 auto}
    いま何枚目かの数字は残す（残りがあることの合図になる） */
 @media (max-width:720px){.top-pr .spot{flex:1 0 82%}.top-pr .ep-slider__btn{display:none}.ep-slider__count{margin-right:0}}
 .top-pr .spot--pr .cat{color:var(--sumi-soft)}
-.single-head .pr-mark{border:1px solid currentColor;padding:0 6px}
 
 /* ===== 誌面（デジタルブック） =====
    PCは見開き、スマホは1ページを暗い台の上に置き、本のように1枚ずつめくる（CSS の3D）。動きは assets/js/book.js。
@@ -1534,7 +1687,8 @@ body.is-book-full{overflow:hidden}
    #magazine の強さで上書きしていた ―― 390px幅で「表紙260px＋本文119px」になり、
    本文が右端の細い帯に押し込まれていた（2026-09-25） */
 @media(min-width:841px){
-  #magazine .wrap{max-width:1380px}
+  /* 幅は他の欄と同じ 1200px。以前は表紙を大きく見せるため 1380px に広げていたが、確定版で
+     他の欄の左端がそろうと、ここだけ見出しと表紙が約90px左にはみ出して見えた（2026-10-07） */
   #magazine .book-top-body{grid-template-columns:clamp(260px,30vw,420px) 1fr;gap:clamp(40px,6vw,88px)}
   /* 号名（h3）は特集の記事名と同じ大きさ。42px だと見出し（h2 46px）と区別がつかなかった */
   #magazine .book-top-text h3{font-size:clamp(25px,3.2vw,36px);letter-spacing:var(--tr-head)}
@@ -1569,8 +1723,9 @@ body.is-book-full{overflow:hidden}
   .actions{row-gap:12px}
   .breadcrumb a{padding:14px 0} /* インライン要素。上下の余白は行の高さを変えない */
   .infotable a{padding:12px 0}
+  .entry-labels a,.entry-map-link a{padding:13px 0} /* インライン要素。行の高さは変わらない */
   .shead .more{padding:11px 0;margin:-11px 0}
-  .fnav a,.flegal a{padding:10px 0;margin:-10px 0}
+  .fcol a,.flangs a{display:inline-block;padding:10px 0;margin:-10px 0}
   .q-back{padding:12px 6px;margin:-11px -6px 9px} /* ボタンの既定の余白（上下1px・左右6px）を含めて置き換える。下の空き20pxは変えない */
   .r-reset{padding:12px 0;margin:-12px 0}
   /* 上の2つは、上下12pxを足すだけだと日本語以外で44pxに届かない（手直し。en・es 39px、ko 40px、zh 42px）。
@@ -1627,32 +1782,6 @@ body.is-book-full{overflow:hidden}
 }
 
 
-/* ============ 特集記事の組版（2026-09-29） ============
-   特集記事（single-post）だけの指定。スポットのページも .single-body を使うので、ここでは触らない。
-   以前は本文に「幅70ch」しか決まっておらず、1200px の枠の左に細く寄って右半分が空き、
-   見出しはブラウザ既定のゴシック太字、段落も詰まって薄く、写真の置き場も無かった（野口指摘「デザインが変」）。
-   読む幅を中央の1本にそろえ、見出しを明朝に、段落の間と行間を読み物の寸法にする。
-   写真だけは本文より一回り広く取る（誌面の見開きの写真と同じで、文字の幅に揃えると小さく見える） */
-.single-post .breadcrumb,
-.single-post .single-head,
-.single-post .single-body{max-width:720px;margin-left:auto;margin-right:auto}
-.single-post .single-hero{max-width:960px;margin:6px auto 56px}
-.single-post .single-hero .imgwrap{aspect-ratio:16/10}
-.single-post .single-title{font-size:clamp(28px,3.6vw,40px);line-height:1.5;margin:0 0 16px}
-.single-post .single-head{margin-bottom:34px}
-.single-post .single-body{color:var(--sumi);font-size:16px;line-height:2.05;letter-spacing:var(--tr-body)}
-.single-post .single-body>p{margin:0 0 1.7em}
-/* 最初の段落はリード。一回り大きく、本文と地続きのまま入口を作る */
-.single-post .single-body>p:first-child{font-size:17px}
-.single-post .single-body h2{font-family:var(--mincho);font-size:clamp(22px,2.4vw,27px);font-weight:600;letter-spacing:var(--tr-head);
-  line-height:1.55;color:var(--sumi);margin:76px 0 26px;padding-top:30px;border-top:1px solid var(--line)}
-.single-post .single-body h3{font-family:var(--mincho);font-size:19px;font-weight:600;letter-spacing:var(--tr-head);line-height:1.6;margin:48px 0 16px}
-.single-post .single-body a{color:inherit;text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:.3em}
-.single-post .single-body a:hover{text-decoration-color:currentColor}
-.single-post .single-body .wp-block-image{margin:40px 0}
-.single-post .single-body .wp-block-image img{width:100%;height:auto;display:block}
-.single-post .single-body .wp-block-image figcaption{font-size:12px;color:var(--sumi-faint);margin-top:8px;letter-spacing:var(--tr-body)}
-
 /* ---- 記事に埋め込んだスポット [ep_spot]（plugins/editplus-spot/article-spot.php） ----
    写真の下に1行の札（エリア｜ジャンル・名前・営業時間）と「詳しく見る」。
    カードを箱で囲まない。本文の途中で箱が続くと広告の枠に見える（誌面の店紹介も写真＋キャプションの組み） */
@@ -1673,9 +1802,6 @@ body.is-book-full{overflow:hidden}
 /* 非公開・削除されたスポット（編集できる人にだけ出る注意） */
 .ep-inline-spot-missing{font-size:13px;color:var(--sumi-soft);border:1px dashed var(--rule);padding:10px 14px;margin:0 0 30px}
 @media(max-width:840px){
-  .single-post .single-hero{margin:0 -30px 40px;max-width:none} /* スマホは写真を画面の端まで */
-  .single-post .single-hero .imgwrap{aspect-ratio:4/3}
-  .single-post .single-body h2{margin-top:56px;padding-top:24px}
   .ep-inline-spot__info a{column-gap:14px}
   .ep-inline-spot__name{font-size:17px}
 }
@@ -1698,7 +1824,6 @@ body.is-book-full{overflow:hidden}
 .nearby-loading{color:var(--sumi-faint)}
 /* 外国語のページの「英字でも探せます」。下の QR の案内と同じ文字の重さで、間を詰める */
 .nearby-latin-note{margin-top:12px}
-.nearby-latin-note + .finder-note{margin-top:6px}
 /* 韓国語は語の途中で折らない（「둘|러볼까요」「코|스를」）。長い語ははみ出させずに折る */
 :lang(ko){word-break:keep-all;overflow-wrap:break-word}
 @media(max-width:840px){
@@ -1731,7 +1856,7 @@ body.is-book-full{overflow:hidden}
   :is(:lang(en),:lang(es),:lang(ko)) .infotable tr{padding:10px 0;border-bottom:1px solid var(--line)}
   :is(:lang(en),:lang(es),:lang(ko)) .infotable th,
   :is(:lang(en),:lang(es),:lang(ko)) .infotable td{display:block;padding:0;border-bottom:0}
-  :is(:lang(en),:lang(es),:lang(ko)) .infotable th{padding-bottom:3px;white-space:normal}
+  :is(:lang(en),:lang(es),:lang(ko)) .infotable th{padding-bottom:3px;white-space:normal;width:auto}
 }
 /* 中国語の明朝の見出し: 先頭のヒラギノ明朝に無い簡体字（谁・查・礼）だけが後ろの宋体で描かれ、1つの見出しで字の形と高さが
    そろわなかった（2026-10-03 テスト）。その言語の字が全部ある明朝（宋体）を先にする。ゴシックも同じ考えで、その言語の書体を先に */
@@ -1753,3 +1878,358 @@ html[lang="zh-TW" i]{
 /* 共有されたコース（/plan/）: コースは JS が描くので、描くまでの欄の高さを取っておく。取らないとフッターが一度上に出てから
    押し下げられ、PC で読み込みのたびにレイアウトが動いていた（CLS 0.11〜0.20）。描き終われば中身の高さになる */
 .quiz--plan:empty{min-height:100vh}
+
+/* ============ トップページ 確定版（2026-10-07） ============
+   Figma「トップページ / PC 1440 / 確定版」（node-id=83-329）と「スマホ 390 / 確定版」（83-569）。
+   10/8 の社内確認で欄ごとに選んだ案を組み合わせたもの → 60_デザイン/2026-10-06_トップページのデザイン監査.md「確定版」。
+   ・地の色はページの和紙1色（欄ごとに灰の地を敷かない）。写真を地に敷く欄（ヒーロー・診断・特集・取材の帯）だけが例外
+   ・地の色で欄を区切らないぶん、余白の決まりで区切る（下の「余白」）。案を組み合わせたままだと欄ごとに上下30〜104pxとまちまちだった */
+
+/* --- 余白 --- PC：欄の上下80（欄と欄の間160）・見出しから中身48。見せ場（特集の後・誌面の前）は120。
+   バナーは上を0にして誌面と一組に見せる */
+.home .top-sec{padding:80px 0}
+.home .shead{margin-bottom:48px}
+.home #feature + .top-sec{padding-top:120px}
+.home #magazine{padding:120px 0 48px}
+.home #magazine .shead{margin-bottom:48px}
+.home #magazine + #banners{padding-top:0}
+.home #banners{padding-bottom:120px}
+/* 欄は管理画面で並べ替えられる（2026-10-08）。上の「誌面とバナーを一組に」は、その2つが続いているときだけの決まりなので、
+   離して置かれたときの受けを足す：誌面の下が詰まらない／バナーが写真の欄のすぐ下でも上が空く */
+.home #magazine:not(:has(+ #banners)){padding-bottom:80px}
+.home :is(.hero,.quiz-sec,#feature.fx,.qr) + #banners{padding-top:80px}
+@media(max-width:840px){
+  .home .top-sec{padding:48px 0}
+  .home .shead{margin-bottom:28px}
+  .home #feature + .top-sec{padding-top:72px}
+  .home #magazine{padding:72px 0 32px}
+  .home #magazine .shead{margin-bottom:28px}
+  .home #banners{padding-bottom:72px}
+  .home #magazine:not(:has(+ #banners)){padding-bottom:48px}
+  .home :is(.hero,.quiz-sec,#feature.fx,.qr) + #banners{padding-top:48px}
+}
+
+/* --- ヒーロー（案A 見出しを中央に） --- */
+@media(min-width:841px){
+  .hero--center{align-items:center}
+  /* 上はヘッダーの高さぶん下げて、見た目の真ん中に置く。枠が画面より高いときは、はみ出したぶん持ち上げる（検索欄を隠さない） */
+  .hero--center .inner{text-align:center;padding:74px 0 max(0px,calc(100vw / (var(--hero-ratio)) - 100svh))}
+  /* 文字が真ん中に来るので、下からの影ではなく写真全体を一段沈める。上の影はヘッダーの文字のため。
+     全体の幕は .32 では渡月橋の河原や空など明るい写真で白い文字が沈まなかったので、.48 まで濃くした（2026-10-07 社内指示） */
+  .hero--center .scrim{background:linear-gradient(180deg,rgba(9,12,20,.45) 0%,rgba(9,12,20,0) 22%),linear-gradient(rgba(10,12,18,.48),rgba(10,12,18,.48))}
+}
+.hero--center .inner{text-align:center}
+.hero--center .hsub{margin-left:auto;margin-right:auto}
+.hero--center .hero-search{margin-left:auto;margin-right:auto}
+@media(max-width:840px){.hero--center .htitle{font-size:36px;line-height:1.4}}
+
+/* --- おすすめ情報（案A 大1件＋右に一覧）。PCだけ。スマホは横一列のまま（2026-10-07 の指示） --- */
+@media(min-width:841px){
+  .top-pr--lead .ep-slider__list{display:grid;grid-template-columns:minmax(0,680fr) minmax(0,412fr);column-gap:48px;
+    grid-template-rows:repeat(var(--pr-rest),auto) 1fr;overflow:visible;scroll-snap-type:none}
+  .top-pr--lead .spot{flex:none;border:0;background:none}
+  /* 送る並びではないので、送りのボタンと「1 – 4」は出さない（JSは列の幅のはみ出しで判定していて、格子の組みでも出ることがある） */
+  .top-pr--lead .ep-slider__nav{display:none}
+  /* 大きい1件は一覧の行数＋1行を縦に通す。最後の1行（1fr）が余りの高さを受けるので、一覧の行は間延びしない */
+  .top-pr--lead .spot:first-child{grid-column:1;grid-row:1 / span var(--pr-span)}
+  .top-pr--lead .spot:first-child .in{padding:20px 0 0}
+  .top-pr--lead .spot:first-child h3{font-size:26px;line-height:1.5;letter-spacing:var(--tr-head);margin:6px 0 0}
+  .top-pr--lead .spot:not(:first-child){grid-column:2;flex-direction:row;align-items:center;gap:24px;padding:22px 0;border-top:1px solid var(--rule)}
+  .top-pr--lead .spot:last-child:not(:first-child){border-bottom:1px solid var(--rule)}
+  .top-pr--lead .spot:not(:first-child)>a{flex:0 0 144px}
+  .top-pr--lead .spot:not(:first-child) .imgwrap,.top-pr--lead .spot:not(:first-child) .noimg{aspect-ratio:144/104}
+  .top-pr--lead .spot:not(:first-child) .in{padding:0;flex:1;min-width:0}
+  .top-pr--lead .spot:not(:first-child) h3{font-size:18px;margin:6px 0 0}
+  /* 札（枠付きのラベル）をやめ、小さな文字だけにする。PRの印は残す（ステマ規制） */
+  .top-pr--lead .cat{border:0;background:none;padding:0;font-size:12px;letter-spacing:var(--tr-meta)}
+  .top-pr--lead .spot:first-child .cat{color:var(--gold-ink)}
+}
+
+/* --- 診断（案B）。問いを白い紙にのせる。案Bの「地にヒーローの写真を淡く敷く」は確認の結果やめ、
+   地の色だけに戻した（2026-10-07 社内指示）。クラス名は案Bの名残で --photo のまま --- */
+.quiz-sec--photo{padding:61px 0 88px}
+.quiz-sec--photo .q-head{margin:0 0 14px;letter-spacing:var(--tr-meta)}
+.quiz-sec--photo .q-sub{max-width:24em;margin:0 auto 41px}
+/* 結果が出たら紙をやめる（結果は横に広い棚で、紙の幅に収まらない） */
+.quiz-sec--photo .quiz:not(.is-result){background:var(--card);box-shadow:0 16px 40px -6px rgba(26,31,46,.1);padding:44px 64px 48px;min-height:0;max-width:760px}
+@media(max-width:840px){
+  .quiz-sec--photo{padding:37px 0 53px}
+  .quiz-sec--photo .q-head{font-size:24px}
+  .quiz-sec--photo .quiz:not(.is-result){padding:26px 24px 29px}
+}
+
+/* --- 特集（案B 全幅の写真に文字） --- */
+#feature.fx{position:relative;padding:0;min-height:clamp(560px,50vw,760px);display:flex;align-items:flex-end;color:#fff;
+  background:linear-gradient(160deg,#232b48 0%,#33436a 55%,#191b18 100%)}
+/* 写真を地に敷く欄（診断・特集・取材の帯）が続くときは、間を空ける。以前は「診断の次が特集」の組だけに書いてあったが、
+   管理画面で並べ替えられるようにしたので（2026-10-08）、どの組でも空くようにする。特集・帯がヒーローのすぐ下に来たときも同じ
+   （診断がヒーローのすぐ下に来るのは今までもある並びで、そこは空けない） */
+.home :is(.quiz-sec,#feature.fx,.qr) + :is(.quiz-sec,#feature.fx,.qr),
+.home .hero + :is(#feature.fx,.qr){margin-top:120px}
+.fx-bg{position:absolute;inset:0}
+.fx-bg img{width:100%;height:100%;object-fit:cover}
+.fx-scrim{position:absolute;inset:0;background:linear-gradient(90deg,rgba(15,18,28,.78) 0%,rgba(15,18,28,0) 62%)}
+.fx-inner{position:relative;z-index:1;width:100%;padding-bottom:clamp(64px,8vw,115px);display:flex;flex-direction:column;align-items:flex-start;gap:18px}
+.fx-label{font-family:var(--gothic);font-weight:400;font-size:13px;letter-spacing:var(--tr-body);line-height:1.7;margin:0}
+.fx-tag::before{content:"\3000"}
+.fx-title{font-family:var(--mincho);font-weight:600;font-size:clamp(26px,3.1vw,44px);letter-spacing:var(--tr-body);line-height:1.5;margin:0;max-width:16em;text-wrap:balance}
+.fx-lead{font-size:15px;line-height:1.9;max-width:28em;margin:0}
+.fx-links{display:flex;align-items:baseline;gap:28px;padding-top:10px}
+.fx-read{font-family:var(--mincho);font-size:14px;letter-spacing:var(--tr-label);padding-bottom:6px;border-bottom:1px solid #fff}
+.fx-more{font-size:13px;letter-spacing:var(--tr-head);opacity:.85}
+.fx-read:hover,.fx-more:hover{opacity:.75}
+@media(max-width:840px){
+  #feature.fx{min-height:560px}
+  .home :is(.quiz-sec,#feature.fx,.qr) + :is(.quiz-sec,#feature.fx,.qr),
+  .home .hero + :is(#feature.fx,.qr){margin-top:64px}
+  .fx-scrim{background:linear-gradient(180deg,rgba(15,18,28,0) 30%,rgba(15,18,28,.85) 100%)}
+  .fx-inner{padding-bottom:36px;gap:12px}
+  .fx-lead{font-size:14px;line-height:1.8}
+}
+
+/* --- 地図から探す（案B）。点の大きさ＝件数。地名の置き場所は地域プロファイル（browse_map） --- */
+.bm{display:grid;grid-template-columns:minmax(0,700px) minmax(240px,368px);justify-content:space-between;gap:48px 72px;align-items:start}
+.bm:not(:has(.bm-mapcol)){grid-template-columns:1fr 1fr}
+/* 地図は縮めない（地名が読めなくなる）。入らない幅では横にずらして見る。
+   列の幅を中身（700px）に引っぱられないよう min-width:0（無いとスマホで列ごと700pxになり、ページの外で切れる） */
+.bm-mapcol{min-width:0}
+.bm-scroll{overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
+.bm-map{position:relative}
+.bm-base{position:absolute;inset:0;width:100%;height:100%}
+.bm-river{position:absolute;font-size:12px;letter-spacing:var(--tr-meta);line-height:1.7;color:var(--sumi-faint);white-space:nowrap}
+/* 点の真ん中が座標に来るように置き、地名は点の右・左・下に続ける */
+.bm-area{position:absolute;display:flex;align-items:center;gap:8px;white-space:nowrap;transform:translate(calc(var(--d) / -2),-50%)}
+.bm-area--left{flex-direction:row-reverse;transform:translate(calc(-100% + var(--d) / 2),-50%)}
+.bm-area--below{flex-direction:column;gap:4px;transform:translate(-50%,calc(var(--d) / -2))}
+.bm-dot{width:var(--d);height:var(--d);border-radius:50%;background:var(--gold);flex:none;transition:transform .3s cubic-bezier(.16,1,.3,1)}
+.bm-area.is-top .bm-dot{background:var(--indigo)}
+.bm-name{font-family:var(--mincho);font-weight:600;font-size:14px;letter-spacing:var(--tr-head);color:var(--sumi)}
+.bm-count{font-size:12px;letter-spacing:var(--tr-head);color:var(--sumi-soft);margin-left:.9em}
+.bm-area:hover .bm-dot,.bm-area:focus-visible .bm-dot{transform:scale(1.18)}
+.bm-area:hover .bm-name{text-decoration:underline;text-underline-offset:.3em;text-decoration-color:var(--line)}
+.bm-note{font-size:12px;letter-spacing:var(--tr-meta);color:var(--sumi-faint);margin:14px 0 0}
+.bm-index h3{font-family:var(--gothic);font-weight:400;font-size:13px;letter-spacing:var(--tr-body);color:var(--gold-ink);margin:0 0 14px}
+.bm-index ul{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+.bm-index li a{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:16px 0;border-bottom:1px solid var(--line)}
+.bm-iname{font-family:var(--mincho);font-size:20px;letter-spacing:var(--tr-body);line-height:1.6;color:var(--sumi);transition:color .2s}
+.bm-icount{font-size:14px;letter-spacing:var(--tr-head);color:var(--sumi-soft);white-space:nowrap}
+.bm-index a:hover .bm-iname{color:var(--indigo)}
+.bm-else{font-size:14px;letter-spacing:var(--tr-head);color:var(--sumi-soft);margin:28px 0 0}
+.bm-else a{text-decoration:underline;text-decoration-color:var(--line);text-underline-offset:.3em}
+@media(max-width:840px){
+  .bm,.bm:not(:has(.bm-mapcol)){grid-template-columns:1fr;gap:36px}
+  .bm-iname{font-size:18px}
+}
+/* 番号と一覧は、地図が入らない幅（スマホ）だけ。PC・タブレットでは地名を点の横に出す */
+.bm-no,.bm-legend{display:none}
+/* 地図（700px）が入らない幅では、横にずらすのをやめて画面の幅に縮める（2026-10-07「中途半端な表示」）。
+   地名は小さくして点の横に残し（外すとどこがどこか分からない、同日）、件数は外す。
+   点には番号を振り、地図の下に番号順の一覧（件数つき）を出す。押しやすいのは一覧のほう */
+@media(max-width:760px){
+  .bm-scroll{overflow:visible}
+  .bm-map{width:100% !important;height:auto !important}
+  .bm-area{--dd:max(20px,calc(var(--d) * .8));gap:4px;transform:translate(calc(var(--dd) / -2),-50%)}
+  .bm-area--left{transform:translate(calc(-100% + var(--dd) / 2),-50%)}
+  .bm-area--below{gap:2px;transform:translate(-50%,calc(var(--dd) / -2))}
+  .bm-area.bm-area--sp-right{flex-direction:row;gap:4px;transform:translate(calc(var(--dd) / -2),-50%)}
+  .bm-area.bm-area--sp-left{flex-direction:row-reverse;gap:4px;transform:translate(calc(-100% + var(--dd) / 2),-50%)}
+  .bm-area.bm-area--sp-below{flex-direction:column;gap:2px;transform:translate(-50%,calc(var(--dd) / -2))}
+  .bm-dot{width:var(--dd);height:var(--dd);display:grid;place-items:center}
+  .bm-area .bm-name{font-size:clamp(10px,2.75vw,11px);letter-spacing:.02em;background:rgba(255,255,255,.78);padding:0 3px;border-radius:2px}
+  .bm-count{display:none}
+  .bm-no{display:block;font-family:var(--serif);font-size:11px;line-height:1;color:#fff;font-variant-numeric:lining-nums}
+  .bm-river{font-size:10px}
+  .bm-note{display:none}
+  .bm-legend{display:block;list-style:none;margin:18px 0 0;padding:0;border-top:1px solid var(--line)}
+  .bm-legend a{display:flex;align-items:baseline;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+  .bm-legend .bm-iname{flex:1;font-size:17px}
+  .bm-lno{flex:none;width:20px;height:20px;border-radius:50%;background:var(--gold);color:#fff;font-family:var(--serif);font-size:11px;line-height:20px;text-align:center;transform:translateY(-2px)}
+  .bm-legend .is-top .bm-lno{background:var(--indigo)}
+}
+
+/* --- おすすめの場所（案C 右にはみ出す写真の帯） --- */
+/* 帯だけ画面の右端まで出す（.wrap の右の余白を打ち消し、同じだけ内側に足して最後の1枚が端に貼り付かないように） */
+.spots-strip .ep-slider__list{gap:28px;margin-right:calc(50% - 50vw);padding:0 calc(50vw - 50%) 0 0;scrollbar-width:none;-ms-overflow-style:none}
+.spots-strip .ep-slider__list::-webkit-scrollbar{display:none}
+.spots-strip .shead .ep-slider__nav .more{margin-left:18px}
+.ps-card{flex:0 0 300px}
+.ps-card .imgwrap,.ps-card .noimg{aspect-ratio:3/4}
+.ps-card .imgwrap img{transition:transform 1s cubic-bezier(.16,1,.3,1)}
+.ps-card a:hover .imgwrap img{transform:scale(1.04)}
+.ps-card h3{font-family:var(--mincho);font-weight:600;font-size:18px;letter-spacing:var(--tr-head);line-height:1.55;margin:16px 0 4px}
+.ps-card .meta{font-size:12px;letter-spacing:var(--tr-meta);color:var(--sumi-faint);margin:0}
+@media(max-width:840px){
+  /* スマホでは「すべて見る」が見出しの下の行に回るので、ボタンとの間の空きは要らない */
+  .spots-strip .shead .ep-slider__nav .more{margin-left:0}
+  .spots-strip .ep-slider__list{gap:14px}
+  .ps-card{flex-basis:264px}
+  .ps-card h3{font-size:16px}
+}
+@media(max-width:720px){.spots-strip .ep-slider__btn{display:none}}
+
+/* --- 誌面（デジタルブック）。札をやめて小さな文字に、読む入口は塗りのボタンに（Figma 確定版） --- */
+.home #magazine .cat{border:0;background:none;padding:0;font-size:12px;color:var(--gold-ink)}
+.home #magazine .book-top-text .btn{background:var(--indigo);border-color:var(--indigo);color:#fff;padding:14px 32px}
+.home #magazine .book-top-text .btn:hover{background:var(--indigo-soft);border-color:var(--indigo-soft)}
+
+/* ============ /nearby/ 2026-10-07：最初の画面「案2のファーストビュー＋案1の続き」・結果の画面「案A 地図と一覧」============
+   → 60_デザイン/2026-10-07_ホテル・いまいる場所からの案.md「決定」。上の 2026-09-17〜10-03 の組みに上書きする */
+
+/* 最初の画面：写真を全幅に敷き、操作を白い紙1枚に載せる（トップのヒーロー・診断の白い紙とそろえる）。
+   紙の上なので、写真に暗幕は要らない（文字は紙の上にしか置かない） */
+.nearby-fv{position:relative;grid-template-columns:1fr;place-items:center;min-height:min(680px,calc(100svh - 74px));padding:72px 16px}
+.nearby-fv .fv-photo{position:absolute;inset:0;height:auto}
+.nearby-fv .fv-photo img{object-position:50% 70%;filter:saturate(.9) brightness(.92)}
+.nearby-fv .fv-body{position:relative;z-index:1;display:block;width:100%;max-width:640px;padding:48px 56px 40px;background:var(--card);
+  box-shadow:0 16px 40px -6px rgba(26,31,46,.18)}
+.nearby-fv .fv-inner{max-width:none}
+/* 見出しは紙の幅で1行（「ホテルから、いまいる場所から。」15字） */
+.nearby-fv .fv-title{font-size:clamp(22px,2.1vw,29px)}
+.nearby-fv .fv-title br{display:none}
+.nearby-fv .fv-sub{margin-top:12px;font-size:14px}
+.nearby-fv .nearby-finder{margin-top:28px}
+/* 唯一の操作は藍の塗りで、紙の幅いっぱい */
+.nearby-fv .nearby-btn{display:block;width:100%;background:var(--indigo);border-color:var(--indigo);color:#fff;letter-spacing:var(--tr-label)}
+.nearby-fv .nearby-btn:hover{background:#28365a;border-color:#28365a;color:#fff}
+/* 駅から始める近道。紙の下に罫線1本で区切って1行（札にはしない。主役は上のボタンと入力欄） */
+.nb-stations{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px;margin:26px 0 0;padding-top:18px;border-top:1px solid var(--line);font-size:12.5px}
+.nb-stations-k{color:var(--sumi-faint);letter-spacing:var(--tr-body)}
+.nb-stations a{font-family:var(--mincho);font-size:14px;color:var(--sumi);text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:.35em;transition:color .2s,text-decoration-color .2s}
+.nb-stations a:hover{color:var(--indigo);text-decoration-color:currentColor}
+
+/* 結果の画面の帯：写真と紙を畳み、出発点を大きく名乗る。h1 は読み上げにだけ残す（見出しの代わりは名乗り） */
+.nearby-fv.nearby-fv--done{display:block;min-height:0;padding:0}
+.nearby-fv--done .fv-body{max-width:none;padding:44px clamp(16px,5.5vw,88px) 36px;background:none;box-shadow:none}
+.nearby-fv--done .fv-title{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+.nearby-fv--done .nb-stations{display:none}
+.nearby-fv--choosing .nb-stations{display:flex;max-width:540px}
+.nearby-fv--done .nearby-state{margin-top:0;align-items:flex-end}
+.nearby-fv--done .nearby-where .nw-head{display:block;font-family:var(--mincho);font-weight:500;font-size:clamp(26px,2.6vw,34px);
+  letter-spacing:var(--tr-head);line-height:1.4;color:var(--sumi)}
+.nearby-where .nw-sub{display:block;margin-top:6px;font-size:13px;letter-spacing:var(--tr-body);color:var(--sumi-soft)}
+.nearby-where .nw-bar::before{content:"";display:inline-block;width:1px;height:.9em;margin:0 12px;background:var(--rule);vertical-align:-1px}
+/* 選び直しは枠付きのボタン（文字だけだと結果の帯の中で押せるものに見えなかった） */
+.nearby-fv--done .nearby-acts{align-items:center;gap:10px}
+.nearby-fv--done .nearby-acts .nearby-again{padding:9px 16px;border:1px solid var(--sumi);font-size:12.5px;color:var(--sumi);background:none;transition:background .2s,color .2s}
+.nearby-fv--done .nearby-acts .nearby-again:hover{background:var(--sumi);color:var(--washi);border-color:var(--sumi)}
+
+/* 選ぶ前にだけ出す例（結果が出たら隠す。直接開いたときの読み込み中も出さない） */
+.nb-preview{padding:0}
+/* 例の下に「位置情報を使わないときは」が続くので、欄の切れ目として罫線と余白を足す */
+.nb-preview + .wrap #nearbyFallback{margin-top:72px;padding-top:40px;border-top:1px solid var(--line)}
+/* 紙の中の状態の行（取得中・失敗の文）は、何も無いときは高さを取らない（紙の下に空白が残った） */
+.nearby-fv:not(.nearby-fv--done) .nearby-state{margin-top:0}
+.nearby-fv:not(.nearby-fv--done) .nearby-where:empty{display:none}
+.nearby-located .nb-preview,.nearby-main--pending .nb-preview{display:none}
+.nb-preview-ttl{margin:0;font-family:var(--mincho);font-weight:500;font-size:clamp(24px,2.6vw,32px);letter-spacing:var(--tr-head);line-height:1.4}
+.nb-preview-sub{margin:8px 0 0;font-size:12px;letter-spacing:var(--tr-body);color:var(--sumi-faint)}
+.nb-preview-cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:56px;margin-top:40px}
+.nb-preview-col h3{margin:0;font-family:var(--mincho);font-size:18px;font-weight:600;letter-spacing:var(--tr-head)}
+.nb-preview-lead{margin:8px 0 18px;font-size:13px;line-height:1.8;color:var(--sumi-soft)}
+.nb-plan,.nb-preview-list{list-style:none;margin:0;padding:20px 26px;background:var(--card);border:1px solid var(--line)}
+.nb-plan-stop{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:12px;align-items:baseline;padding:5px 0}
+.nb-plan-time{font-size:12px;color:var(--sumi-faint);font-variant-numeric:tabular-nums}
+.nb-plan-name{font-family:var(--mincho);font-size:15px;color:var(--sumi)}
+a.nb-plan-name:hover{color:var(--indigo)}
+.nb-plan-note{font-size:11.5px;color:var(--sumi-faint);white-space:nowrap}
+.nb-plan-leg{margin-left:64px;padding:3px 0 3px 12px;border-left:1px solid var(--rule);font-size:11.5px;color:var(--sumi-faint)}
+.nb-preview-list li{display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:14px;align-items:center;padding:11px 0;border-bottom:1px solid var(--line)}
+.nb-preview-list li:last-child{border-bottom:0}
+.nb-preview-photo{display:block;width:44px;aspect-ratio:1/1;overflow:hidden;background:var(--panel)}
+.nb-preview-photo img{display:block;width:100%;height:100%;object-fit:cover}
+.nb-preview-name a{font-family:var(--mincho);font-size:15px;color:var(--sumi)}
+.nb-preview-name a:hover{color:var(--indigo)}
+.nb-preview-name small{display:block;margin-top:2px;font-size:11.5px;color:var(--sumi-faint)}
+.nb-preview-walk{font-size:13px;color:var(--indigo);white-space:nowrap}
+.nb-preview-go{margin:28px 0 0;text-align:right}
+.nb-preview-go a{font-family:var(--mincho);font-size:15px;letter-spacing:var(--tr-meta);color:var(--sumi);padding-bottom:4px;border-bottom:1px solid var(--sumi)}
+.nb-preview-go a:hover{color:var(--indigo);border-color:var(--indigo)}
+.nb-preview-go a span{margin-left:.5em}
+
+/* 「位置情報を使わないときは」→ 結果が出たら「ほかの探し方」 */
+.nb-fb-after{display:none}
+.nearby-located .nb-fb-before{display:none}
+.nearby-located .nb-fb-after{display:revert}
+
+/* 近くの行き先：見出しの右にジャンルのタブ（文字と件数＋下線） */
+.nb-head{display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:16px 32px;margin-bottom:24px}
+.nb-head .ttl{margin:0;font-family:var(--mincho);font-weight:500;font-size:clamp(26px,2.6vw,34px);letter-spacing:var(--tr-head);line-height:1.3}
+.nb-head .nb-genres{display:flex;flex-wrap:wrap;gap:6px 22px;margin:0}
+.nb-genres[hidden]{display:none}
+.nb-genre{padding:0 0 8px;border:0;border-bottom:1px solid transparent;background:none;cursor:pointer;
+  font-family:var(--gothic);font-size:13px;letter-spacing:var(--tr-body);color:var(--sumi-soft)}
+.nb-genre:hover{color:var(--sumi)}
+.nb-genre.on{color:var(--sumi);border-bottom-color:var(--sumi)}
+.nb-genre-c{margin-left:.4em;font-size:11px;color:var(--sumi-faint)}
+
+/* 左に一覧、右に地図。地図は画面に残す（sticky。ヘッダー74px＋余白） */
+.nb-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:32px;align-items:start}
+.nb-listcol{grid-column:1;grid-row:1;min-width:0}
+.nb-mapcol{grid-column:2;grid-row:1;position:sticky;top:98px}
+.nb-mapcol[hidden]{display:none}
+.nb-results .nb-list{border-top:1px solid var(--line)}
+.nb-results .nb-row{grid-template-columns:56px minmax(0,1fr) auto;column-gap:16px;align-items:start;padding:14px 4px}
+.nb-results .nb-photo{width:56px;grid-row:1 / span 3}
+.nb-results .nb-name{font-size:15.5px}
+.nb-results .nb-meta{grid-column:2;grid-row:2;margin-top:2px}
+.nb-results .nb-acts{grid-column:2;grid-row:3;justify-content:flex-start;margin-top:4px}
+/* 徒歩の分数は右端に大きく（近い順を目で追うための列）。「徒歩」は小さく上に */
+.nb-results .nb-walk{grid-column:3;grid-row:1 / span 3;align-self:center;text-align:right;margin:0}
+.nb-walk-k{display:block;font-size:10.5px;letter-spacing:var(--tr-body);color:var(--sumi-faint)}
+.nb-walk-v{display:block;font-family:var(--mincho);font-size:20px;line-height:1.3;color:var(--indigo);white-space:nowrap}
+.nb-results .nb-row.is-on{background:var(--card)}
+.nb-more{display:inline-block;margin-top:24px;background:none;cursor:pointer}
+.nb-more[hidden]{display:none}
+
+/* 地図。タイルは nearby.js が並べる。点は金、選んだ点は藍、出発点は墨の四角 */
+.nb-map{position:relative;overflow:hidden;height:min(600px,calc(100vh - 170px));background:#eceee8;border:1px solid var(--line)}
+.nb-tile{position:absolute;width:64px;height:64px;max-width:none;user-select:none;pointer-events:none}
+/* 淡色地図でも記号と色が多く、点が埋もれた。色を抜いて一段薄くし、点（金・藍）と輪だけが色を持つようにする */
+.nb-map .nb-tile{filter:grayscale(1) contrast(.92) brightness(1.04);opacity:.78}
+.nb-ring{position:absolute;border:1px dashed rgba(51,67,106,.5);border-radius:50%;pointer-events:none}
+.nb-ring-l{position:absolute;left:50%;top:0;transform:translate(-50%,-50%);padding:1px 6px;background:rgba(255,255,255,.88);
+  font-size:10.5px;letter-spacing:var(--tr-body);color:var(--sumi-soft);white-space:nowrap}
+.nb-pin{position:absolute;z-index:1;width:12px;height:12px;margin:-6px 0 0 -6px;border:2px solid #fff;border-radius:50%;
+  background:var(--gold);box-shadow:0 1px 3px rgba(0,0,0,.3);cursor:pointer;transition:transform .15s}
+.nb-pin:hover{transform:scale(1.25)}
+.nb-pin.is-on{z-index:2;background:var(--indigo);transform:scale(1.35)}
+.nb-pin[hidden]{display:none}
+.nb-origin{position:absolute;z-index:3;width:14px;height:14px;margin:-7px 0 0 -7px;background:var(--sumi);border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.nb-origin-l{position:absolute;right:calc(100% + 6px);top:50%;transform:translateY(-50%);padding:2px 6px;background:rgba(255,255,255,.92);
+  font-size:11.5px;color:var(--sumi);white-space:nowrap}
+.nb-tip{position:absolute;z-index:4;transform:translate(14px,-50%);padding:6px 10px;background:var(--card);border:1px solid var(--line);
+  box-shadow:0 6px 16px -4px rgba(26,31,46,.18);font-family:var(--mincho);font-size:13px;color:var(--sumi);white-space:nowrap;pointer-events:none}
+.nb-tip small{margin-left:8px;font-family:var(--gothic);font-size:11px;color:var(--sumi-faint)}
+.nb-tip--left{transform:translate(calc(-100% - 14px),-50%)}
+.nb-tip[hidden]{display:none}
+.nb-map-foot{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin:8px 0 0;font-size:11px;color:var(--sumi-faint)}
+.nb-map-credit{margin-left:auto}
+.nb-map-credit a{color:inherit;text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:.25em}
+.nb-map-toggle{display:none}
+
+@media (max-width:840px){
+  /* 最初の画面：写真の上に紙。紙は画面の幅から左右16px */
+  .nearby-fv:not(.nearby-fv--done){min-height:0;margin-top:60px;padding:56px 16px 48px}
+  .nearby-fv .fv-body{padding:28px 22px 26px}
+  .nearby-fv .fv-title{font-size:24px}
+  .nearby-fv .fv-title br{display:inline}
+  .nearby-fv--done .fv-body{padding:28px 16px 24px}
+  .nearby-fv--done .nearby-state{flex-direction:column;align-items:flex-start;gap:14px}
+  .nb-preview-cols{grid-template-columns:1fr;gap:40px;margin-top:28px}
+  .nb-plan,.nb-preview-list{padding:16px 18px}
+  .nb-preview-go{text-align:left}
+  /* 結果：地図を一覧の上に小さく。「地図を大きく見る」で広げる */
+  .nb-layout{grid-template-columns:1fr;gap:12px}
+  .nb-mapcol{grid-column:1;grid-row:1;position:static}
+  .nb-listcol{grid-row:2}
+  .nb-map{height:220px}
+  .nb-mapcol--big .nb-map{height:min(70vh,520px)}
+  .nb-map-toggle{display:inline;padding:0;border:0;background:none;cursor:pointer;font-family:var(--gothic);font-size:12.5px;
+    letter-spacing:var(--tr-body);color:var(--indigo);text-decoration:underline;text-underline-offset:.25em}
+  .nb-head{margin-bottom:16px}
+  .nb-results .nb-row{grid-template-columns:52px minmax(0,1fr) auto;column-gap:12px;padding:13px 2px}
+  .nb-results .nb-photo{width:52px;grid-row:1 / span 3}
+  .nb-results .nb-walk{grid-column:3;grid-row:1 / span 3;text-align:right;margin-top:0}
+  .nb-results .nb-acts{grid-column:2;grid-row:3}
+  .nb-more{display:block;width:100%}
+}

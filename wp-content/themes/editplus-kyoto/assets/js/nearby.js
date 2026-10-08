@@ -25,9 +25,15 @@
  * 京都の外・拒否・時間切れのときは、文をボタンのすぐ下に出して画面の中まで動かし、「ホテルや駅から探す」を出す。
  * 範囲の箱の中でも近くの行き先が0件（大阪駅など）なら京都の外と同じに扱い、コースの欄は出さない。
  *
- * 出発点が決まったら見開きのFVを畳み（.nearby-fv--done）、空いた場所に
- * 「河原町・烏丸のあたり ・ 8件 徒歩2〜6分」を出す。**どこを出発点と受け取ったかを名乗る**ため。
+ * 出発点が決まったら写真と紙を畳み（.nearby-fv--done）、帯に「京都駅から」を大きく、
+ * 「JR・近鉄・地下鉄｜近くの行き先 20件 ・ 徒歩2〜18分」を小さく出す。**どこを出発点と受け取ったかを名乗る**ため。
  * → 60_デザイン/2026-09-17_現在地から探す画面のデザイン監査.md
+ *
+ * 結果の画面（2026-10-07 案A 地図と一覧 → 60_デザイン/2026-10-07_ホテル・いまいる場所からの案.md）:
+ * 一覧は最初 PC 8件・スマホ 6件（「残り◯件を見る」で開く）。右（スマホは上）に地図。地図は国土地理院の淡色地図を
+ * タイルのまま並べ、出発点を真ん中に、徒歩5・10・15分の輪と行き先の点を置く。行に触れると点が濃くなり、点を押すと行へ移る。
+ * 地図のライブラリは使わない ―― 動かしたり拡大したりする地図ではなく、一覧の位置関係を1枚で見せる図なので、
+ * 数十行で足り、約150KBのライブラリを読ませずに済む。
  */
 (function () {
 	'use strict';
@@ -62,6 +68,10 @@
 	var courseLead = byId('nearbyCourseLead');
 	var quizEl = byId('epNearbyQuiz');
 	var mainEl = document.querySelector('.nearby-main');
+	var moreBtn = byId('nearbyMore');
+	var mapCol = byId('nearbyMapCol');
+	var mapEl = byId('nearbyMap');
+	var mapToggle = byId('nearbyMapToggle');
 	// 直接開いたときの「読み込み中」の構え（コースの欄を先に出し、「位置情報を使わないときは」を隠す → nearby.php）を解く
 	var settle = function () { if (mainEl) { mainEl.classList.remove('nearby-main--pending'); } };
 	if (!fv || !tabHere || !tabHotel || !btn || !hotelForm || !hotelQ || !suggest || !grid || !quizEl || !courseSec) return;
@@ -382,11 +392,22 @@
 		show({ kind: o.kind, id: o.id, name: o.title, title: o.title, reading: o.reading || '' }, { scroll: true });
 	}
 
+	// 「駅から：」のリンクと、例の下の「京都駅から探す」（2026-10-07）。JSが効いていればページを離れずにその駅で始める。
+	// 名前はリンクに持たせた見出しの形（入力欄に戻す名前）。文の中の形（スペイン語の冠詞つき）はサーバーの応答で揃う
+	document.querySelectorAll('a[data-station]').forEach(function (a) {
+		a.addEventListener('click', function (e) {
+			if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) { return; }
+			e.preventDefault();
+			selectTab(tabHotel, false);
+			pick({ kind: 'station', id: a.getAttribute('data-station'), title: a.getAttribute('data-title') || a.textContent });
+		});
+	});
+
 	/* ---------- 3. 結果（どの出発点も同じ） ---------- */
 
 	/**
-	 * ジャンルの絞り込みチップを作る。結果に実際にあった親ジャンルだけを出す
-	 * （空のチップを押させない）。絞り込みは読み込み済みの行に対して行うので通信しない。
+	 * ジャンルの絞り込み（文字と件数＋下線のタブ。2026-10-07 に丸い札から変えた）。結果に実際にあった親ジャンルだけを出す
+	 * （空のタブを押させない）。絞り込みは読み込み済みの行に対して行うので通信しない。地図の点も同じジャンルだけにする
 	 */
 	function buildGenres(list) {
 		if (!genres) return;
@@ -400,22 +421,25 @@
 		all.forEach(function (g, i) {
 			var b = document.createElement('button');
 			b.type = 'button';
-			b.className = 'chip nb-chip' + (i === 0 ? ' on' : '');
+			b.className = 'nb-genre' + (i === 0 ? ' on' : '');
 			b.setAttribute('aria-pressed', i === 0 ? 'true' : 'false');
 			b.dataset.genre = g.slug;
-			b.textContent = String(t('genreCount', '%1$s（%2$d）')).replace('%1$s', g.name).replace('%2$d', g.count);
+			b.appendChild(document.createTextNode(g.name));
+			var c = document.createElement('span');
+			c.className = 'nb-genre-c';
+			c.textContent = String(g.count);
+			b.appendChild(c);
+			// 読み上げは「飲食（5）」の形で（数字だけが離れて読まれないように）
+			b.setAttribute('aria-label', String(t('genreCount', '%1$s（%2$d）')).replace('%1$s', g.name).replace('%2$d', g.count));
 			b.addEventListener('click', function () {
-				genres.querySelectorAll('.nb-chip').forEach(function (o) {
+				genres.querySelectorAll('.nb-genre').forEach(function (o) {
 					var on = (o === b);
 					o.classList.toggle('on', on);
 					o.setAttribute('aria-pressed', on ? 'true' : 'false');
 				});
-				var n = 0;
-				rows.forEach(function (row) {
-					var hit = (!g.slug || row.dataset.genre === g.slug);
-					row.hidden = !hit;
-					if (hit) n++;
-				});
+				genreSel = g.slug;
+				var n = applyRows();
+				pinsByGenre();
 				// 要約（どこから・何件・徒歩何分・範囲を広げたか）は消さない。別の枠で件数だけ伝える
 				sayFilter(t('genreFiltered', '%d件を表示しています').replace('%d', n));
 			});
@@ -423,6 +447,236 @@
 		});
 		genres.hidden = false;
 	}
+
+	/* ---------- 3a. 一覧の件数（最初は PC 8件・スマホ 6件） ---------- */
+
+	var genreSel = '';
+	var expanded = false;
+	var NARROW = window.matchMedia ? window.matchMedia('(max-width: 840px)') : null;
+	var firstRows = function () { return (NARROW && NARROW.matches) ? 6 : 8; };
+
+	/**
+	 * ジャンルと「残り◯件」に合わせて行を出し隠しする。
+	 * @return {number} ジャンルに当たった件数（隠した残りも含む）
+	 */
+	function applyRows() {
+		var n = 0;
+		var rest = 0;
+		var cap = firstRows();
+		grid.querySelectorAll('.nb-row').forEach(function (row) {
+			if (genreSel && row.dataset.genre !== genreSel) { row.hidden = true; return; }
+			n++;
+			var over = !expanded && n > cap;
+			row.hidden = over;
+			if (over) { rest++; }
+		});
+		if (moreBtn) {
+			moreBtn.hidden = !rest;
+			if (rest) { moreBtn.textContent = String(moreBtn.getAttribute('data-label') || '%d').replace('%d', rest); }
+		}
+		// 地図の縮尺は出ている行に合わせるので、出し隠しが変わったら描き直す
+		drawMap();
+		return n;
+	}
+	if (moreBtn) {
+		moreBtn.addEventListener('click', function () {
+			var before = grid.querySelectorAll('.nb-row:not([hidden])').length;
+			expanded = true;
+			applyRows();
+			// 開いた最初の行の名前へフォーカスを移す（ボタンが消えるので、フォーカスを body に落とさない）
+			var next = grid.querySelectorAll('.nb-row:not([hidden])')[before];
+			var a = next && next.querySelector('.nb-name a');
+			if (a) { a.focus(); }
+		});
+	}
+	if (NARROW && NARROW.addEventListener) { NARROW.addEventListener('change', function () { if (shown) { applyRows(); } }); }
+
+	/* ---------- 3b. 地図（国土地理院の淡色地図。2026-10-07 結果の画面 案A） ---------- */
+
+	var TILE = 'https://cyberjapandata.gsi.go.jp/xyz/pale/';
+	// 徒歩分数の逆（plugins/editplus-spot/geo.php の editplus_walk_minutes: 分 = 距離 × 1.3 ÷ 80）
+	var M_PER_MIN = 80 / 1.3;
+	var RINGS = [5, 10, 15];
+	var mapData = null; // { center: {lat,lng}, name: 出発点の名前, points: [{id,lat,lng,walk,genre,name}] }
+	var activeId = '';
+
+	// ウェブメルカトルの画素座標（ズーム z のとき、世界全体が 256×2^z の正方形）
+	function project(lat, lng, z) {
+		var size = 256 * Math.pow(2, z);
+		var r = lat * Math.PI / 180;
+		return { x: (lng + 180) / 360 * size, y: (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * size };
+	}
+
+	function setMap(map, origin) {
+		var pts = (map && map.points) || [];
+		var c = (map && map.origin) || (origin && typeof origin.lat === 'number' ? { lat: origin.lat, lng: origin.lng } : null);
+		if (!mapCol || !mapEl || !c || !pts.length) { mapData = null; if (mapCol) { mapCol.hidden = true; } return; }
+		mapData = { center: c, name: isPlace(origin) ? (origin.name || '') : t('hereLabel', '現在地'), points: pts };
+		activeId = '';
+		mapCol.hidden = false;
+		drawMap();
+	}
+
+	/** 地図を描き直す（結果が変わった・幅が変わった・スマホで広げた）。 */
+	function drawMap() {
+		if (!mapData || !mapCol || mapCol.hidden) { return; }
+		var W = mapEl.clientWidth;
+		var H = mapEl.clientHeight;
+		if (!W || !H) { return; }
+		var c = mapData.center;
+		var pad = 22;
+		// 出発点を真ん中に置いたまま、**一覧に出ている行の点**がぜんぶ入るいちばん大きいズーム（16〜12）。
+		// 17まで寄せると駅舎と通りの名前が画面を埋め、徒歩10分の輪も外に出た
+		// 20件すべてに合わせると、遠い数件のために縮尺が下がって近い点が団子になった（2026-10-07 京都駅で確認）。
+		// 隠れている行の点も地図には置く（端に出るか、外に切れる）
+		var seen = {};
+		grid.querySelectorAll('.nb-row:not([hidden])').forEach(function (row) { seen[row.dataset.id] = true; });
+		var fitPts = mapData.points.filter(function (p) { return seen[String(p.id)]; });
+		if (!fitPts.length) { fitPts = mapData.points; }
+		var z = 16;
+		for (; z > 12; z--) {
+			var o0 = project(c.lat, c.lng, z);
+			var fits = fitPts.every(function (p) {
+				var q = project(p.lat, p.lng, z);
+				return Math.abs(q.x - o0.x) <= W / 2 - pad && Math.abs(q.y - o0.y) <= H / 2 - pad;
+			});
+			if (fits) { break; }
+		}
+		var o = project(c.lat, c.lng, z);
+		var left = o.x - W / 2;
+		var top = o.y - H / 2;
+		var frag = document.createDocumentFragment();
+		var n = Math.pow(2, z);
+		// タイルは2段細かいズームのものを4分の1の大きさ（64px）で並べる。地理院の淡色地図は細かいズームほど
+		// 文字を大きく描くので、そのままの大きさ・1段細かい半分の大きさでは通りや駅の名前が点より大きく出て、
+		// 点と輪が読めなかった（2026-10-07 京都駅で比べた）。高解像度の画面でも粗くならない。
+		// 枚数はPCの地図で約100枚（1枚数KB）。地図の最大ズームを16にしているので、タイルは地理院の上限18に収まる
+		var tz = z + 2;
+		var tn = Math.pow(2, tz);
+		var TS = 64;
+		for (var tx = Math.floor(left / TS); tx <= Math.floor((left + W) / TS); tx++) {
+			for (var ty = Math.floor(top / TS); ty <= Math.floor((top + H) / TS); ty++) {
+				if (ty < 0 || ty >= tn) { continue; }
+				var img = document.createElement('img');
+				img.className = 'nb-tile';
+				img.alt = '';
+				img.decoding = 'async';
+				img.src = TILE + tz + '/' + (((tx % tn) + tn) % tn) + '/' + ty + '.png';
+				img.style.left = Math.round(tx * TS - left) + 'px';
+				img.style.top = Math.round(ty * TS - top) + 'px';
+				img.onerror = function () { this.remove(); };
+				frag.appendChild(img);
+			}
+		}
+		// 徒歩の輪。地図より大きい輪は出さない（端が切れた弧だけが残ると読めない）
+		var mpp = 156543.03392 * Math.cos(c.lat * Math.PI / 180) / n;
+		RINGS.forEach(function (min) {
+			var r = min * M_PER_MIN / mpp;
+			if (r > Math.max(W, H) * 0.75 || r < 18) { return; }
+			var ring = document.createElement('span');
+			ring.className = 'nb-ring';
+			ring.style.width = ring.style.height = Math.round(r * 2) + 'px';
+			ring.style.left = Math.round(W / 2 - r) + 'px';
+			ring.style.top = Math.round(H / 2 - r) + 'px';
+			var lb = document.createElement('span');
+			lb.className = 'nb-ring-l';
+			lb.textContent = t('walkOne', '徒歩約%d分').replace('約', '').replace('%d', min);
+			ring.appendChild(lb);
+			frag.appendChild(ring);
+		});
+		mapData.points.forEach(function (p) {
+			var q = project(p.lat, p.lng, z);
+			var pin = document.createElement('span');
+			pin.className = 'nb-pin';
+			pin.dataset.id = String(p.id);
+			pin.dataset.genre = p.genre || '';
+			pin.style.left = Math.round(q.x - left) + 'px';
+			pin.style.top = Math.round(q.y - top) + 'px';
+			pin.addEventListener('click', function () { setActive(p.id, true); });
+			frag.appendChild(pin);
+		});
+		var me = document.createElement('span');
+		me.className = 'nb-origin';
+		me.style.left = Math.round(W / 2) + 'px';
+		me.style.top = Math.round(H / 2) + 'px';
+		var meL = jaEl('span', mapData.name);
+		meL.className = 'nb-origin-l';
+		me.appendChild(meL);
+		frag.appendChild(me);
+		var tip = document.createElement('span');
+		tip.className = 'nb-tip';
+		tip.hidden = true;
+		frag.appendChild(tip);
+
+		mapEl.innerHTML = '';
+		mapEl.appendChild(frag);
+		pinsByGenre();
+		if (activeId) { setActive(activeId, false); }
+	}
+
+	function pinsByGenre() {
+		if (!mapEl) { return; }
+		mapEl.querySelectorAll('.nb-pin').forEach(function (pin) { pin.hidden = !!genreSel && pin.dataset.genre !== genreSel; });
+	}
+
+	/**
+	 * 行と点を結ぶ。行に触れたとき（toRow=false）は点を濃くして名前を添えるだけ、
+	 * 点を押したとき（toRow=true）は、その行を出して（「残り」に隠れていれば開いて）そこまで動かす
+	 */
+	function setActive(id, toRow) {
+		if (!mapData || !mapEl) { return; }
+		activeId = String(id);
+		var p = null;
+		mapData.points.forEach(function (x) { if (String(x.id) === activeId) { p = x; } });
+		var pin = null;
+		mapEl.querySelectorAll('.nb-pin').forEach(function (el) {
+			var on = el.dataset.id === activeId;
+			el.classList.toggle('is-on', on);
+			if (on) { pin = el; }
+		});
+		var tip = mapEl.querySelector('.nb-tip');
+		if (tip) {
+			tip.hidden = !(p && pin && !pin.hidden);
+			if (!tip.hidden) {
+				tip.textContent = '';
+				tip.appendChild(jaEl('span', p.name));
+				var w = document.createElement('small');
+				w.textContent = t('walkOne', '徒歩約%d分').replace('%d', p.walk);
+				tip.appendChild(w);
+				tip.style.left = pin.style.left;
+				tip.style.top = pin.style.top;
+				// 右端の点では吹き出しを左へ出す（地図の外にはみ出さない）
+				tip.classList.toggle('nb-tip--left', parseInt(pin.style.left, 10) > mapEl.clientWidth * 0.6);
+			}
+		}
+		grid.querySelectorAll('.nb-row').forEach(function (row) { row.classList.toggle('is-on', row.dataset.id === activeId); });
+		if (toRow) {
+			var row = grid.querySelector('.nb-row[data-id="' + activeId + '"]');
+			if (row && row.hidden) { expanded = true; applyRows(); }
+			if (row) { row.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+		}
+	}
+	// 行に触れた・タブキーで行に来たら、地図の点を濃くする
+	['mouseover', 'focusin'].forEach(function (type) {
+		grid.addEventListener(type, function (e) {
+			var row = e.target.closest ? e.target.closest('.nb-row') : null;
+			if (row && row.dataset.id && row.dataset.id !== activeId) { setActive(row.dataset.id, false); }
+		});
+	});
+	if (mapToggle && mapCol) {
+		mapToggle.addEventListener('click', function () {
+			var big = !mapCol.classList.contains('nb-mapcol--big');
+			mapCol.classList.toggle('nb-mapcol--big', big);
+			mapToggle.setAttribute('aria-expanded', big ? 'true' : 'false');
+			mapToggle.textContent = mapToggle.getAttribute(big ? 'data-close' : 'data-open') || '';
+			drawMap();
+		});
+	}
+	var mapTimer = null;
+	window.addEventListener('resize', function () {
+		clearTimeout(mapTimer);
+		mapTimer = setTimeout(drawMap, 150);
+	});
 
 	// 「◯◯から」の名前の部分（外国語のページでは日本語の名前に lang="ja"、読みがあれば小さく添える）
 	function nameFrag(o, tag) {
@@ -445,36 +699,50 @@
 	 */
 	function summarize(r, origin) {
 		if (!msg) return;
+		// 2段で組む（2026-10-07 結果の画面 案A）。大きな名乗り（.nw-head）と、路線・件数・徒歩の範囲の小さな1行（.nw-sub）
 		var frag = document.createDocumentFragment();
-		var text = function (s) { frag.appendChild(document.createTextNode(s)); };
+		var head = document.createElement('span');
+		head.className = 'nw-head';
+		var sub = document.createElement('span');
+		sub.className = 'nw-sub';
+		var text = function (el, s) { el.appendChild(document.createTextNode(s)); };
 		var keep = function (s) {
 			var el = document.createElement('span');
 			el.className = 'nw';
 			el.textContent = s;
-			frag.appendChild(el);
+			sub.appendChild(el);
 		};
-		var parts = [];
 		var place = isPlace(origin);
 		if (place) {
 			var fmt = String(t('legFrom', '%sから')).split('%s');
-			text(fmt[0] || '');
-			frag.appendChild(nameFrag(origin, 'span'));
-			text(fmt[1] || '');
+			text(head, fmt[0] || '');
+			head.appendChild(nameFrag(origin, 'span'));
+			text(head, fmt[1] || '');
 		} else if (r.area && r.count) {
 			// エリア名がもともと「周辺」「Area」で終わるなら「のあたり」を重ねない（「京都駅周辺 のあたり」「Around Kyoto Station Area」）
-			text(/(周辺|周边|周邊|주변|\bArea)$|^Alrededores/i.test(r.area) ? r.area : t('nearArea', '%sのあたり').replace('%s', r.area));
+			text(head, /(周辺|周边|周邊|주변|\bArea)$|^Alrededores/i.test(r.area) ? r.area : t('nearArea', '%sのあたり').replace('%s', r.area));
+		} else {
+			text(head, t('hereLabel', '現在地'));
 		}
-		parts.push(t('nearCount', '%d件').replace('%d', r.count));
+		// 駅なら乗り入れている会社（「JR・近鉄・地下鉄」）を先に
+		var lines = (r.origin && r.origin.lines) || '';
+		if (lines) {
+			text(sub, lines);
+			var bar = document.createElement('span');
+			bar.className = 'nw-bar';
+			bar.setAttribute('aria-hidden', 'true');
+			sub.appendChild(bar);
+		}
+		keep(t('nearPlaces', '近くの行き先') + ' ' + t('nearCount', '%d件').replace('%d', r.count));
 		if (r.walk_min != null && r.walk_max != null) {
-			parts.push(r.walk_min === r.walk_max
+			text(sub, t('sep', ' ・ '));
+			keep(r.walk_min === r.walk_max
 				? t('walkOne', '徒歩約%d分').replace('%d', r.walk_min)
 				: t('walkRange', '徒歩%1$d〜%2$d分').replace('%1$d', r.walk_min).replace('%2$d', r.walk_max));
 		}
-		parts.forEach(function (p, i) {
-			if (i || place || r.area) { text(t('sep', ' ・ ')); }
-			keep(p);
-		});
-		if (r.widened) { text('　' + t('nearWidened', '近くに少なかったため、範囲を広げています。')); }
+		if (r.widened) { text(sub, '　' + t('nearWidened', '近くに少なかったため、範囲を広げています。')); }
+		frag.appendChild(head);
+		frag.appendChild(sub);
 		// 読み上げの枠なので、組み立ててから1回で差し替える（途中の断片を読ませない）
 		msg.textContent = '';
 		msg.appendChild(frag);
@@ -608,7 +876,7 @@
 				var ld = document.createElement('span');
 				ld.className = 'nearby-loading';
 				ld.textContent = t('sep', ' ・ ') + t('searching', '検索中…');
-				msg.appendChild(ld);
+				(msg.querySelector('.nw-head') || msg).appendChild(ld);
 			}
 		}
 		var url = grid.getAttribute('data-endpoint');
@@ -679,7 +947,10 @@
 
 				// HTMLはサーバが templates/row-spot.php で描いてエスケープ済み
 				grid.innerHTML = r.json.html;
+				genreSel = '';
+				expanded = false;
 				buildGenres(r.json.genres);
+				applyRows();
 
 				// 見開きを畳み、空いた場所に「どこを出発点と受け取ったか」を出す。
 				// 見出し（h1）は残す ―― 畳むのは写真・説明文・タブ・手順だけ（CSS の .nearby-fv--done）
@@ -692,6 +963,9 @@
 				// ① コース作成（すぐ下）→ ② 近くの行き先
 				courseSec.hidden = false;
 				nearSec.hidden = false;
+
+				// 地図は欄を出してから描く（hidden のあいだは幅が0で、タイルの枚数を決められない）
+				setMap(r.json.map, origin);
 
 				// 結果が出たことを読み上げ、同じ文を画面にも残す
 				summarize(r.json, origin);
@@ -875,6 +1149,10 @@
 		courseSec.hidden = true;
 		grid.innerHTML = '';
 		if (genres) { genres.innerHTML = ''; genres.hidden = true; }
+		if (moreBtn) { moreBtn.hidden = true; }
+		mapData = null;
+		if (mapCol) { mapCol.hidden = true; }
+		if (mapEl) { mapEl.innerHTML = ''; }
 		quizEl.innerHTML = '';
 		setActs(null);
 		say(GEO_OK ? '' : t('geoUnsupported', 'この端末・ブラウザでは位置情報を使えません。'));

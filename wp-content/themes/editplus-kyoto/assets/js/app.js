@@ -593,3 +593,89 @@
 		update();
 	});
 })();
+
+/**
+ * トップの「地図から探す」：地図が入りきらない幅（スマホ）では横にずらして見る。
+ * 左端から始めると西の外れ（嵐山）しか見えないので、最初は真ん中（街なか）を見せる。
+ */
+(function () {
+	'use strict';
+	document.querySelectorAll('.bm-scroll').forEach(function (box) {
+		var center = function () {
+			var over = box.scrollWidth - box.clientWidth;
+			if (over > 0) {
+				box.scrollLeft = over / 2;
+			}
+		};
+		center();
+		window.addEventListener('load', center, { once: true });
+	});
+})();
+
+/**
+ * トップのヒーロー：写真を選んでいないときは同梱の3枚を2秒ずつ見せて入れ替える（2026-10-07。もとは Figma「ヒーローの動き」の4秒・1.6秒だったが、遅いという指示で同日に半分にした。Figmaのその絵は同日に削除したので、秒数の正はここ）。
+ * 見た目（重なり方・1.6秒の動き）は style.css の .hero-slide。ここは順番と止める条件だけを持つ。
+ * 動きを減らす設定の端末では始めない（1枚目のまま・ボタンも出さない）。止めるボタンはキーボードで選んだときだけ見える（style.css .hero-pause）。
+ * 画面の外にあるとき・タブが裏にあるときは止める（見ていないのに次の写真を読み込ませない）。
+ */
+(function () {
+	'use strict';
+	var hero = document.querySelector('.hero');
+	var slides = hero ? hero.querySelectorAll('.hero-slide') : [];
+	var ctl = hero ? hero.querySelector('.hero-ctl') : null;
+	if (slides.length < 2 || !ctl || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
+		return;
+	}
+	var HOLD = 2000;   // 1枚を見せる時間
+	var ENTER = 800;   // 次の写真が重なりきるまで（style.css の ep-hero-enter と同じ）
+	var btn = ctl.querySelector('.hero-pause');
+	var cur = 0;
+	var timer = null;
+	var paused = false;   // ボタンで止めた
+	var visible = true;   // 画面に入っている
+	ctl.hidden = false;
+
+	var ready = function (img) { return img.complete && img.naturalWidth > 0; };
+
+	var schedule = function () {
+		clearTimeout(timer);
+		if (!paused && visible && !document.hidden) {
+			timer = setTimeout(next, HOLD);
+		}
+	};
+
+	function next() {
+		var from = slides[cur];
+		var to = slides[(cur + 1) % slides.length];
+		if (!ready(to)) {
+			// まだ届いていなければ、届いてから入れ替える（真っ黒な枠が重なってこないように）
+			to.loading = 'eager';
+			to.addEventListener('load', schedule, { once: true });
+			return;
+		}
+		cur = (cur + 1) % slides.length;
+		to.classList.add('is-enter');
+		setTimeout(function () {
+			// 重なりきってから前の写真を下ろす。先に下ろすと一瞬地が見える
+			from.classList.remove('is-on');
+			to.classList.add('is-on');
+			to.classList.remove('is-enter');
+			schedule();
+		}, ENTER);
+	}
+
+	btn.addEventListener('click', function () {
+		paused = !paused;
+		btn.setAttribute('aria-pressed', paused ? 'true' : 'false');
+		btn.setAttribute('aria-label', btn.getAttribute(paused ? 'data-label-play' : 'data-label-pause'));
+		schedule();
+	});
+	document.addEventListener('visibilitychange', schedule);
+	if ('IntersectionObserver' in window) {
+		new IntersectionObserver(function (entries) {
+			visible = entries[0].isIntersecting;
+			schedule();
+		}).observe(hero);
+	}
+	schedule();
+})();

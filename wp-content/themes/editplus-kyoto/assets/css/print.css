@@ -1,5 +1,5 @@
 /*
- * 紙・PDFの行程表（2026-10-03）
+ * 紙・PDFの行程表（2026-10-03 → 2026-10-08 写真つきの「旅のしおり」に作り直し）
  *
  * 「PDFで保存・印刷」で紙に出すのは、quiz.js の printSheet() が印刷の直前に組む .ep-sheet だけ。
  * 読み込みは functions.php（media="print"）。画面の CSS と混ざらないよう、印刷の指定はこのファイルだけに置く
@@ -7,17 +7,40 @@
  * html.ep-print-plan はボタンを押したとき（と、共有ページ /plan/ の beforeprint）だけ付く。
  * それ以外の印刷（トップをブラウザのメニューから印刷する など）に効くのは @page の用紙と余白だけ。
  *
- * 目指したもの: ホテルのコンシェルジュデスクで手渡される「本日のご案内」の1枚。部品ではなく文字組みで見せる。
- *   ・箱・影・丸い札・色の面を使わない。罫線は 0.5pt を2本だけ（頭の下と、末尾のQRの上）
- *   ・色は墨と灰だけ（差し色を入れない。家庭のモノクロ印刷でも同じに見える）
- *   ・左に着く時刻、右に立ち寄り先。立ち寄り先の途中ではページを切らない
+ * 目指したもの: 冊子「京都観光コンシェルジュ」の1ページのような、旅のしおり。
+ * 10/3 の紙は文字だけの2段組みで、「AIがつくる書類」に見えた（2026-10-08 野口さん）。
+ *   ・1件ごとに、左に着く時刻（欧文の数字）・中に名前（明朝）と文・右に写真（3:2 の小さな横長。画面のカードと同じ写真）
+ *   ・立ち寄り先どうしは細い罫で区切り、罫の左端に「徒歩6分・334m」と移動を入れる（画面と同じ歩く人・電車・バスの印）
+ *   ・箱・影・丸い札・グラデーション・英字の飾り見出しは使わない。面を塗るのは、写真の無いスポットの「名前の面」だけ
+ *   ・色はサイトの墨の4段と罫の色（style.css の変数と同じ値）。差し色は題字の横の一語（金）だけ。色が付くのは写真
+ *   ・立ち寄り先の途中ではページを切らない。長いコースは2〜3ページに分け、2ページ目からページ番号を出す
  *   ・寸法は pt と mm で書く（紙の上の大きさで決めるため。px は画面の都合）
  */
 
-/* 余白は上下18・16mm、左右20mm。下を少し詰めるのは、末尾のQRの塊を1ページ目に残しやすくするため */
+/* 余白は上下18・16mm、左右20mm。用紙の指定は、この紙のあるページの印刷すべてに効く */
 @page {
   size: A4 portrait;
   margin: 18mm 20mm 16mm;
+}
+/* ページ番号は行程表だけに（名前つきのページ。トップをメニューから印刷したときには出さない）。
+   1ページ目には出さない ―― 1枚で終わるコースに「1 / 1」と刷らないため。分かれたときだけ、2ページ目から「2 / 3」と出る。
+   書体は変数で書けない（余白の箱は .ep-sheet の外）ので、時刻の数字と同じ書体を名前で書く */
+@page sheet {
+  size: A4 portrait;
+  margin: 18mm 20mm 16mm;
+  @bottom-center {
+    content: counter(page) " / " counter(pages);
+    font-family: "Cormorant Garamond", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    font-size: 9pt;
+    font-weight: 500;
+    letter-spacing: .06em;
+    color: #666b63;
+  }
+}
+@page sheet:first {
+  @bottom-center {
+    content: none;
+  }
 }
 
 /* 行程表のほかは紙に出さない。body の直下で .ep-sheet 以外を消す（ヘッダー・ほかの棚・フッター・画面の結果） */
@@ -36,11 +59,16 @@ html.ep-print-plan .ep-sheet {
 }
 
 .ep-sheet {
-  --ps-ink: #222;      /* 墨。見出し・時刻・店名 */
-  --ps-soft: #474747;  /* 紹介文・営業時間などの中身 */
-  --ps-faint: #767676; /* 「営業時間」などの札・移動・注記 */
-  --ps-rule: #8f8f8f;  /* 0.5pt の罫線。墨のままだと 0.5pt でも太く見える */
-  --ps-time: 21mm;     /* 時刻の列の幅 */
+  page: sheet;
+  --ps-ink: #191b18;   /* 墨。表題・時刻・店名（style.css の --sumi） */
+  --ps-soft: #4f544c;  /* 紹介文・理由文・営業時間の中身（--sumi-soft） */
+  --ps-faint: #666b63; /* 「営業時間」などの札・移動・注記（--sumi-faint） */
+  --ps-rule: #b4b8ae;  /* 0.5pt の罫線。画面の --rule（#d4d4cb）は紙の白の上では消えるので、一段濃く */
+  --ps-gold: #7d6a3a;  /* 題字の横の一語だけ（--gold-ink） */
+  --ps-plate: #f3f4f0; /* 写真の無いスポットの「名前の面」（和紙の色を、白い紙の上で分かる濃さに） */
+  --ps-time: 19mm;     /* 時刻の列の幅 */
+  --ps-ph-w: 44mm;     /* 写真の枠。3:2。quiz.js の PAPER_PH と同じ値（変えるときは両方） */
+  --ps-ph-h: 29.33mm;
   color: var(--ps-ink);
   font-family: var(--gothic);
   font-size: 8.5pt;
@@ -48,7 +76,7 @@ html.ep-print-plan .ep-sheet {
   letter-spacing: .04em;
   /* 色をそのまま刷らせる。Chrome は「背景のグラフィック」を切った印刷（既定）で、#6b6b6b より淡い文字を
      ほぼ黒に濃くする（白地で読めなくなるのを防ぐ仕組み）。札と注記の灰が墨と同じ黒になり、強弱が消えていた
-     （2026-10-03 に PDF で実測：#767676 の「営業時間」が #222 で刷られた）。背景は使っていないので、インクは増えない */
+     （2026-10-03 に PDF で実測：#767676 の「営業時間」が #222 で刷られた）。名前の面の淡い地も、これが無いと刷られない */
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
@@ -59,48 +87,69 @@ html.ep-print-plan .ep-sheet {
   margin: 0;
   padding: 0;
 }
+/* 印（歩く人・電車・時計など）は文字と同じ色・同じ大きさで。画面の指定（style.css の .ep-icon）より少し小さく */
+.ep-sheet .ep-icon {
+  width: 1.1em;
+  height: 1.1em;
+  vertical-align: -.2em;
+  margin-right: .3em;
+}
 
-/* ---- 頭：サイト名と「モデルコースのご案内」、その下に罫線1本 ---- */
+/* ---- 題字：誌名（明朝）と細い罫。右に小さく「モデルコース」 ---- */
 .ep-sheet .ps-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 8mm;
-  padding-bottom: 5pt;
-  border-bottom: .5pt solid var(--ps-rule);
+  padding-bottom: 6pt;
+  border-bottom: .5pt solid var(--ps-ink);
 }
 .ep-sheet .ps-site {
   font-family: var(--mincho);
-  font-size: 10pt;
-  font-weight: 500;
+  font-size: 11pt;
+  font-weight: 600; /* 画面のヘッダーの誌名と同じ太さ */
   letter-spacing: .16em;
 }
-.ep-sheet .ps-kind {
-  font-size: 7pt;
-  letter-spacing: .2em;
-  color: var(--ps-faint);
-  white-space: nowrap;
-}
-
-/* ---- コース名・紹介文・1行の要約 ---- */
-.ep-sheet .ps-title {
-  margin-top: 17pt;
-  font-family: var(--mincho);
-  font-size: 15.5pt;
-  font-weight: 500; /* 画面のコース名と同じ太さ（同じフォントのファイルを使う。理由は .ps-depart） */
-  line-height: 1.5;
+/* 欧文の誌名は字間を詰める（和文の .16em のままだと、語がばらけて見える） */
+html:not([lang^="ja"]):not([lang^="zh"]):not([lang^="ko"]) .ep-sheet .ps-site {
   letter-spacing: .05em;
 }
+.ep-sheet .ps-kind {
+  font-size: 7.5pt;
+  letter-spacing: .2em;
+  color: var(--ps-gold);
+  white-space: nowrap;
+}
+html:not([lang^="ja"]):not([lang^="zh"]) .ep-sheet .ps-kind {
+  letter-spacing: .08em;
+}
+
+/* ---- 表題：コース名（明朝・大きく）・紹介文・出発地と時間と回り方の1行 ---- */
+.ep-sheet .ps-lead {
+  padding: 17pt 0 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.ep-sheet .ps-title {
+  font-family: var(--mincho);
+  font-size: 21pt;
+  font-weight: 500; /* 画面のコース名と同じ太さ */
+  line-height: 1.42;
+  letter-spacing: .04em;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
 .ep-sheet .ps-desc {
-  margin-top: 6pt;
+  max-width: 150mm; /* 1行を長くしすぎない（紙の幅いっぱいだと、目が行の頭に戻りにくい） */
+  margin-top: 9pt;
   font-size: 8.5pt;
-  line-height: 1.9;
+  line-height: 1.95;
   color: var(--ps-soft);
   text-wrap: pretty; /* 最後の行に「す。」だけが落ちないように */
   line-break: strict;
 }
 .ep-sheet .ps-sum {
-  margin-top: 8pt;
+  margin-top: 10pt;
   font-size: 8pt;
   letter-spacing: .06em;
   color: var(--ps-soft);
@@ -110,100 +159,121 @@ html.ep-print-plan .ep-sheet {
   margin-right: 1.8em;
 }
 
-/* ---- 行程表：左に着く時刻、右に立ち寄り先 ---- */
+/* ---- 立ち寄り先：左に着く時刻、中に名前と文、右に写真 ---- */
 .ep-sheet .ps-list {
   list-style: none;
-  margin-top: 20pt;
+  margin-top: 13pt;
 }
 /* 1件（移動の行＋立ち寄り先）は2ページにまたがらせない。移動の行を同じ塊に入れているのは、
    「徒歩9分」だけがページの下に残って、行き先が次のページに行くのを防ぐため */
 .ep-sheet .ps-row {
-  padding-top: 11pt;
   break-inside: avoid;
   page-break-inside: avoid;
 }
-.ep-sheet .ps-row--start {
-  padding-top: 0;
+/* 立ち寄り先のあいだの空きは、下ではなく上に取る。下に取ると、ページの最後の1件が空きの分だけ入らず、
+   次のページへ送られていた（6件のコースで、5件目が5px足りずに2ページ目へ。2026-10-08 実測）。
+   上の空きは、ページの頭に来たときにブラウザが切り詰める */
+.ep-sheet .ps-row + .ps-row {
+  margin-top: 10pt;
 }
-/* エリアが替わる所（ここで乗り物に乗る）は、札を立てずに余白で区切る */
-.ep-sheet .ps-row--zone {
-  padding-top: 24pt;
-}
+/* 移動の行は、立ち寄り先どうしを区切る罫を兼ねる。左に「徒歩6分・334m」、その右へ罫が紙の端まで伸びる */
 .ep-sheet .ps-leg {
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+  min-height: 11pt;
   margin-bottom: 8pt;
-  padding-left: var(--ps-time);
-  font-size: 7pt;
-  letter-spacing: .06em;
+  font-size: 7.5pt;
+  line-height: 1.5;
+  letter-spacing: .05em;
   color: var(--ps-faint);
+}
+.ep-sheet .ps-leg::after {
+  content: "";
+  flex: 1 1 20mm;
+  min-width: 20mm;
+  border-top: .5pt solid var(--ps-rule);
+}
+.ep-sheet .ps-leg-in {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.ep-sheet .ps-leg-in > span {
+  display: inline-block; /* 「徒歩6分・334m」と「開くまで約30分」は、項目の間でだけ折る */
+  margin-right: 1.4em;
+}
+.ep-sheet .ps-leg-in > span:last-child {
+  margin-right: 0;
+}
+/* 乗る区間（電車・バス、車）は墨を濃く（画面と同じ。札は立てず、濃さだけで「ここで乗る」を読ませる） */
+.ep-sheet .ps-leg--ride {
+  color: var(--ps-ink);
 }
 .ep-sheet .ps-gap {
   display: inline-block;
-  width: 1.6em;
+  width: 1em;
 }
-/* 時刻と店名は1行目の文字の並び（ベースライン）で揃える。書体も大きさも違うので、上端で揃えると時刻が浮いて見える */
 .ep-sheet .ps-stop {
   display: grid;
-  grid-template-columns: var(--ps-time) minmax(0, 1fr);
-  align-items: baseline;
+  grid-template-columns: var(--ps-time) minmax(0, 1fr) var(--ps-ph-w);
+  column-gap: 0;
+  align-items: start;
+}
+.ep-sheet .ps-body {
+  padding-right: 7mm;
 }
 .ep-sheet .ps-time {
   font-family: var(--serif);
   line-height: 1.2;
 }
-/* 着く時刻。画面の時刻（600）より細い 500 で、紙では細い数字に見せる（500 も画面のどこかで使っていて読み込み済み） */
+/* 着く時刻。画面の時刻（600）より細い 500 で、紙では細い数字に見せる */
 .ep-sheet .ps-time b {
   display: block;
-  font-size: 13pt;
+  font-size: 15pt;
   font-weight: 500;
-  letter-spacing: .03em;
+  letter-spacing: .02em;
   font-variant-numeric: lining-nums; /* 高さの揃った数字で。Cormorant の既定は上下に出入りする数字で、「10:03」の3が下がる */
 }
 /* 出る時刻は小さくゴシックで（画面の時刻と同じ）。Cormorant には「〜」が無く、そこだけ別の明朝で刷られていた */
 .ep-sheet .ps-time small {
   display: block;
-  margin-top: 1pt;
+  margin-top: 2pt;
   font-family: var(--gothic);
   font-size: 7pt;
   letter-spacing: .04em;
   color: var(--ps-faint);
 }
-/* 出発の行は立ち寄り先ではないので、明朝の見出しにせず本文の字で置く。
-   もう1つの理由: 紙にだけ出る字は、画面で同じ書体・太さの字が使われていないと、印刷の時点でフォントが届いていないことがある
-   （Google Fonts は字の範囲ごとのファイルを、画面に出た字の分だけ読む。印刷は押した瞬間に組んで始まる）。
-   出発地の名前は画面では本文のゴシックで出ているので、同じゴシックなら必ず読み込み済み */
-.ep-sheet .ps-depart {
-  font-size: 8.5pt;
-  letter-spacing: .06em;
-}
 .ep-sheet .ps-name {
   font-family: var(--mincho);
-  font-size: 11.5pt;
+  font-size: 13pt;
   font-weight: 600;
-  line-height: 1.45;
+  line-height: 1.4;
   letter-spacing: .04em;
   overflow-wrap: anywhere; /* 空白の無い英字の店名（quiz.js の nameHtml が折る所を入れている） */
 }
 .ep-sheet .ps-reason {
-  margin-top: 2pt;
-  font-size: 8pt;
-  line-height: 1.75;
+  margin-top: 4pt;
+  font-size: 8.5pt;
+  line-height: 1.8;
+  color: var(--ps-soft);
   text-wrap: pretty;
   line-break: strict;
 }
 .ep-sheet .ps-meta,
 .ep-sheet .ps-facts {
   font-size: 7pt;
-  line-height: 1.7;
+  line-height: 1.75;
   letter-spacing: .04em;
   color: var(--ps-soft);
 }
 .ep-sheet .ps-meta {
-  margin-top: 3pt;
+  margin-top: 6pt;
 }
 .ep-sheet .ps-meta > span {
+  display: inline-block;
   margin-right: 1.4em;
 }
-/* 営業時間・定休日・最寄り駅は続けて流す（1項目1行にすると、短い項目でも行が増えて一日のコースが2ページに収まらない） */
+/* 営業時間・定休日・最寄り駅は続けて流す（1項目1行にすると、短い項目でも行が増える） */
 .ep-sheet .ps-fact {
   display: inline-block; /* 行に入らない項目は、項目ごと次の行へ（「徒／歩5分」と中身の途中で折らない）。長い営業時間は中で折れる */
   max-width: 100%;
@@ -215,12 +285,48 @@ html.ep-print-plan .ep-sheet {
   white-space: nowrap; /* 「最寄り／駅」と札の途中で折らない */
 }
 
-/* ---- 満たせなかった条件の注記 ---- */
-.ep-sheet .ps-flag {
-  margin-top: 14pt;
-  padding-left: var(--ps-time);
-  font-size: 7pt;
+/* 写真。3:2 の小さな横長（画面のカードと同じ比率）。枠いっぱいに敷いて、はみ出す分は切る */
+.ep-sheet .ps-ph {
+  width: var(--ps-ph-w);
+  height: var(--ps-ph-h);
+  margin-top: 2pt; /* 店名の字の上端と、写真の上端を揃える */
+  overflow: hidden;
+}
+.ep-sheet .ps-ph img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+}
+/* 写真の無いスポットの「名前の面」。画面のカード（.noimg）と同じ考え方: 和紙の面に、その場所の名前を明朝で置く。
+   空の灰色の箱にも「NO IMAGE」にもしない */
+.ep-sheet .ps-ph--plate {
+  display: grid;
+  place-items: center;
+  padding: 3mm 4mm;
+  background: var(--ps-plate);
+}
+.ep-sheet .ps-ph-name {
+  font-family: var(--mincho);
+  font-size: 9pt;
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: .04em;
   color: var(--ps-soft);
+  text-align: center;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+/* 元が小さい写真は引き伸ばさず、同じ面の中央に、粗く見えない大きさで置く（大きさは quiz.js が写真ごとに決める） */
+.ep-sheet .ps-ph--small {
+  padding: 0;
+}
+.ep-sheet .ps-ph--small img {
+  object-fit: contain;
 }
 
 /* ---- 末尾：このコースのページを開くQRと、注記 ---- */
@@ -229,11 +335,14 @@ html.ep-print-plan .ep-sheet {
   justify-content: space-between;
   align-items: flex-end;
   gap: 10mm;
-  margin-top: 22pt;
-  padding-top: 9pt;
-  border-top: .5pt solid var(--ps-rule);
+  margin-top: 14pt;
+  padding-top: 11pt;
+  border-top: .5pt solid var(--ps-ink);
   break-inside: avoid;
   page-break-inside: avoid;
+  /* QRの塊だけが次のページに落ちないように。入らないときは、最後の立ち寄り先ごと次のページへ送らせる */
+  break-before: avoid;
+  page-break-before: avoid;
 }
 .ep-sheet .ps-foot-text {
   flex: 1;
@@ -243,7 +352,8 @@ html.ep-print-plan .ep-sheet {
   color: var(--ps-soft);
 }
 .ep-sheet .ps-qr-lead {
-  font-size: 8pt;
+  font-family: var(--gothic);
+  font-size: 8.5pt;
   color: var(--ps-ink);
 }
 .ep-sheet .ps-url {
@@ -251,8 +361,15 @@ html.ep-print-plan .ep-sheet {
   color: var(--ps-faint);
   word-break: break-all;
 }
+/* 満たせなかった条件の注記（食事が入っていない・営業時間の外かもしれない） */
+.ep-sheet .ps-flag {
+  margin-top: 7pt;
+}
 .ep-sheet .ps-note {
   margin-top: 7pt;
+}
+.ep-sheet .ps-flag + .ps-note {
+  margin-top: 0;
 }
 .ep-sheet .ps-made {
   color: var(--ps-faint);
@@ -266,4 +383,3 @@ html.ep-print-plan .ep-sheet {
   margin-right: -2mm; /* 白4マスの分だけ右へ出し、見た目の右端を本文の右端に揃える */
   fill: var(--ps-ink);
 }
-

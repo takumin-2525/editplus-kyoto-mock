@@ -514,6 +514,72 @@ function mount(el, options) {
 		return m < 1000 ? m + 'm' : (Math.round(m / 100) / 10) + 'km';
 	}
 
+	/*
+	 * ---- 紙・PDFの行程表に載せる写真（2026-10-08） ----
+	 * 紙にも、画面のカードと同じ写真を載せる（写真の出どころは loadPhotos が取ってくる一覧だけ。紙のために API を足さない）。
+	 * 印刷は押した瞬間に同期で組む（共有ページの beforeprint も同じ）ので、**その時点で読み終えている写真しか載せられない**。
+	 * 一覧が届いた時点で紙用の写真を読み始め、読み終えた img をスポットのIDで持っておく。紙を組むときは、その img をそのまま紙へ移す
+	 * （同じ URL で img を作り直すと、読み込み済みかどうかがブラウザのキャッシュ任せになる）。
+	 */
+	// 紙の写真の枠（mm）。print.css の --ps-ph-w・--ps-ph-h と同じ値（変えるときは両方）
+	var PAPER_PH = { w: 42, h: 28 };
+	var paperPhotos = {};   // スポットのID → img（読み込み中のものも入る。使うのは読み終えたものだけ → paperPhoto）
+	var photosAsked = null; // 写真の一覧を取りに行っている最中だけ、その Promise
+	// 枠いっぱいに敷いたときの細かさ（dpi）。足りないほうの辺で決まる
+	function paperDpi(w, h) {
+		return Math.min(w * 25.4 / PAPER_PH.w, h * 25.4 / PAPER_PH.h);
+	}
+	/**
+	 * 紙に使う写真のURL。枠に敷いて 220dpi を超える中で、いちばん小さいものを選ぶ。
+	 *
+	 * 画面のカードは medium_large → large → medium の順で選ぶが、元の写真が幅768px より小さいスポットは
+	 * medium（幅300px）しか当たらない（誌面から起こした写真の多くは幅680px前後で、medium_large が作られない）。
+	 * 300px を紙の枠（42mm）に敷くと 180dpi 前後で、PDF を画面で開くと甘く見える。そういう写真は元の大きさ（full）を使う。
+	 * どれも 220dpi に届かないとき（元が小さい写真）は、いちばん大きいもの。それでも粗い写真は、引き伸ばさずに小さく置く（→ placePaperPhotos）
+	 */
+	function paperSource(media) {
+		var sizes = (media.media_details && media.media_details.sizes) || {};
+		var list = [];
+		['medium', 'medium_large', 'large', 'full'].forEach(function (key) {
+			var s = own(sizes, key);
+			if (s && s.source_url && s.width > 0 && s.height > 0) { list.push(s); }
+		});
+		if (!list.length) { return media.source_url || ''; }
+		list.sort(function (a, b) { return a.width - b.width; });
+		// 元の写真（full）が大きすぎるときは候補から外す（数MBの写真を、42mm の枠のために読ませない）。
+		// 幅1600px を超える元には必ず large までの縮小版があるので、外しても候補は残る
+		var fit = list.filter(function (s) { return s.width <= 1600; });
+		if (fit.length) { list = fit; }
+		var pick = list[list.length - 1];
+		list.some(function (s) {
+			if (paperDpi(s.width, s.height) >= 220) { pick = s; return true; }
+			return false;
+		});
+		return pick.source_url;
+	}
+	function keepForPaper(id, media) {
+		var src = paperSource(media);
+		var had = own(paperPhotos, String(id));
+		// 予算チップで組み直したとき、同じスポットの写真を読み直さない
+		if (!src || (had && had.getAttribute('data-src') === src)) { return; }
+		var img = new Image();
+		img.alt = '';
+		img.decoding = 'sync'; // 紙に移したその場で描かせる（後から描くと、印刷に間に合わない）
+		img.setAttribute('data-src', src);
+		img.src = src;
+		paperPhotos[String(id)] = img;
+	}
+	/** そのスポットの、読み終えた写真（まだ・無い・読めなかったときは null）。 */
+	function paperPhoto(id) {
+		var img = own(paperPhotos, String(id));
+		return (img && img.complete && img.naturalWidth > 0) ? img : null;
+	}
+	/** 紙に載せる写真が出そろったか（一覧が届いていて、どの写真も読み終えたか・読めなかったかが決まっている）。 */
+	function paperReady() {
+		if (photosAsked) { return false; }
+		return Object.keys(paperPhotos).every(function (id) { return paperPhotos[id].complete; });
+	}
+
 	// 行程のカードに写真を載せる。診断の API は写真を返さないので、WP の公開 API（スポットの一覧）から取る。
 	// 診断の組み立てには触らない。取れなかったカードは「名前の面」のまま
 	function loadPhotos(ids) {
@@ -521,7 +587,7 @@ function mount(el, options) {
 		var url = endpoint.replace('editplus/v1/concierge', 'wp/v2/spot');
 		url += (url.indexOf('?') === -1 ? '?' : '&') + 'include=' + ids.join(',') + '&per_page=' + ids.length
 			+ '&_embed=wp:featuredmedia&_fields=id,_links,_embedded';
-		fetch(url).then(function (r) { return r.ok ? r.json() : []; }).then(function (list) {
+		var asked = fetch(url).then(function (r) { return r.ok ? r.json() : []; }).then(function (list) {
 			if (!alive()) { return; }
 			// 写真が載ると見出しが現れ、カードが1枚あたり46〜73px伸びる。読んでいるカードがその分だけ下へずれていた
 			// （スマホで3枚目を読んでいると119px。BUGS #8）。Chrome の「位置を保つ機能」は、伸びるのが読んでいるカードの中だと効かず、
@@ -537,6 +603,7 @@ function mount(el, options) {
 			(list || []).forEach(function (p) {
 				var m = p._embedded && p._embedded['wp:featuredmedia'] && p._embedded['wp:featuredmedia'][0];
 				if (!m || !m.source_url) { return; }
+				keepForPaper(p.id, m); // 紙・PDF用にも読んでおく（画面のカードには触らない）
 				var sizes = (m.media_details && m.media_details.sizes) || {};
 				var src = (sizes.medium_large || sizes.large || sizes.medium || m).source_url;
 				var card = el.querySelector('.spot[data-spot="' + p.id + '"]');
@@ -559,7 +626,11 @@ function mount(el, options) {
 				var moved = mark.getBoundingClientRect().top - markTop;
 				if (Math.abs(moved) >= 1) { window.scrollBy(0, moved); }
 			}
-		}).catch(function () { /* 写真が無くても行程は読める */ });
+		}).catch(function () { /* 写真が無くても行程は読める */ }).then(function () {
+			// 一覧が届いた（か、取れなかった）。組み直しで後から出した依頼が走っているときは、そちらが終わるまで「途中」のまま
+			if (photosAsked === asked) { photosAsked = null; }
+		});
+		photosAsked = asked;
 	}
 
 	/**
@@ -614,12 +685,16 @@ function mount(el, options) {
 	}
 
 	/*
-	 * ---- 紙・PDFの行程表（2026-10-03 作り直し） ----
+	 * ---- 紙・PDFの行程表（2026-10-03 作り直し → 2026-10-08 写真つきの「旅のしおり」に） ----
 	 * 以前は画面のカード（3列の箱・写真・「乗換案内を見る」のリンク・丸い札）をそのまま紙に流していた。
 	 * 紙では押せないリンクが並び、ウェブの部品が箱のまま残って「画面を印刷しただけ」に見えた。
-	 * 紙のためだけの組み（左に時刻、右に立ち寄り先の2段組み）を印刷の直前に組んで body の末尾に置き、終わったら消す。
+	 * 紙のためだけの組みを印刷の直前に組んで body の末尾に置き、終わったら消す。
 	 * 画面のカードを組み替えないのは、画面の描画（renderResult）に紙の都合を混ぜないため。
 	 * 見た目は assets/css/print.css（media="print"）。画面では hidden のままなので、画面の見た目は変わらない。
+	 *
+	 * 10/3 の紙は文字だけ（左に時刻、右に立ち寄り先）で、「AIがつくる書類」に見えた（2026-10-08 野口さん）。
+	 * 冊子の1ページのように組み直した: 題字 → 表題 → 立ち寄り先（左に時刻・中に名前と文・右に写真）→ 末尾にQR。
+	 * 写真は画面のカードと同じもの（→ 上の「紙・PDFの行程表に載せる写真」）。書体は先に読んでおく（→ warmPaper）
 	 */
 
 	/**
@@ -659,6 +734,8 @@ function mount(el, options) {
 	 * 中身は画面と同じ値だけを使う（時刻・移動・営業時間はサーバーが決めた値。紙のために足さない）。
 	 * 画面と違うのは、押せないもの（行き方のリンク・予算・共有）を出さないことと、
 	 * 代わりにこのコースのページを開くQRを末尾に置くこと（地図と乗換案内はスマートフォンで開いてもらう）。
+	 * 写真は枠だけを書いておき、紙を置くときに読み終えた img を移す（placePaperPhotos）。
+	 * 文字列で img を書かないのは、warmPaper が同じHTMLを書体の下調べに使うため（そこで写真を読み直させない）。
 	 * 店名・コース名・営業時間は、サーバーが返した言語のまま（2026-10-03〜ページの言語で返る）。
 	 * 日本語のまま来た部分（訳の無い宿の名前・確かめに落ちた営業時間・古い共有コース）にだけ、外国語のページで lang="ja" を付ける。
 	 */
@@ -681,8 +758,9 @@ function mount(el, options) {
 		// 日本語のまま来た中身（営業時間の原文・古い共有コースなど）を、外国語のページでも日本語として組ませる（それ以外は何も付かない）
 		var jaText = function (text) { return '<span' + jaAttr(text) + '>' + esc(text) + '</span>'; };
 
-		// 1行の要約（「四条河原町発　09:30〜16:14　電車・バス3回＋徒歩3区間」）。
-		// 乗り物の数え方は renderResult の要約と同じ決め方（選んだ答えではなく、コースの中身を書く）。変えるときは両方
+		// 紹介文の右に置く3行（「四条河原町発」「10:00〜13:55」「歩いて回れるコース」）。出発地・時間・回り方。
+		// 出発の行は立てない ―― 出発地と出る時刻はここにあり、1件目の移動の罫が「四条河原町から 徒歩6分」と受ける（画面のカードと同じ）。
+		// 乗り物の数え方と印は renderResult の要約と同じ決め方（選んだ答えではなく、コースの中身を書く）。変えるときは両方
 		var sum = [];
 		if (start.text) { sum.push(withOrigin(t('fromLabel', '%s発'))); }
 		if (plan.begin) { sum.push(esc(plan.begin) + (plan.end ? range + esc(plan.end) : '')); }
@@ -698,57 +776,69 @@ function mount(el, options) {
 				});
 				var sumKey = rideMode === 'car' ? 'sumCar' : 'sumTransit';
 				var rideName = MODES[rideMode].label[1];
-				sum.push(esc(walks > 0
+				// 実際に乗る区間の印を、出てきた順に（電車とバスの両方に乗るなら両方）。歩く区間があれば最後に歩く人
+				var seen = {};
+				var sumIcons = '';
+				spots.forEach(function (s) {
+					var m = modeCode(s.leg_mode, s.travel_by);
+					if (!m || m === 'walk') { return; }
+					var key = m === 'transit' ? (s.leg_kind === 'bus' ? 'bus' : 'train') : m;
+					if (!seen[key]) { seen[key] = true; sumIcons += modeIcon(m, s.leg_kind); }
+				});
+				if (walks > 0) { sumIcons += icon('walk'); }
+				sum.push(withIcon(sumIcons, esc(walks > 0
 					? fmt2(t(sumKey, rideName + '%1$d回＋徒歩%2$d区間'), rides, walks)
-					: fmt(t(sumKey + 'Only', rideName + '%d回'), rides)));
+					: fmt(t(sumKey + 'Only', rideName + '%d回'), rides))));
 			} else {
-				sum.push(esc(t('sumWalk', '歩いて回れるコース')));
+				sum.push(withIcon(icon('walk'), esc(t('sumWalk', '歩いて回れるコース'))));
 			}
 		} else if (plan.transport_label) {
 			var chosen = modeCode(plan.transport, plan.transport_label);
-			sum.push(esc(chosen ? modeLabel(chosen) : plan.transport_label));
+			sum.push(withIcon(modeIcon(chosen, ''), esc(chosen ? modeLabel(chosen) : plan.transport_label)));
 		}
 
-		var rows = [];
-		// 出発の行。行程表は「何時にどこを出るか」から始める（ホテルのデスクで渡される行程と同じ）。
-		// 出発地の名前が分からない（おまかせ）か、時刻を持たない古いコースでは置かない
-		var startRow = !!(start.text && plan.begin);
-		if (startRow) {
-			rows.push('<li class="ps-row ps-row--start"><div class="ps-stop">'
-				+ '<p class="ps-time"><b>' + esc(plan.begin) + '</b></p>'
-				+ '<div class="ps-body"><p class="ps-depart">' + withOrigin(t('fromLabel', '%s発')) + '</p></div>'
-				+ '</div></li>');
-		}
-		spots.forEach(function (s, i) {
-			// ひとつ前の場所からの移動（「徒歩9分・553m」「電車・バス16分・2.4km」）と、開店を待つ時間
+		var rows = spots.map(function (s, i) {
+			// ひとつ前の場所からの移動（「徒歩9分・553m」「電車・バス16分・2.4km」）と、開店を待つ時間。
+			// 立ち寄り先どうしを区切る罫の上に置く（print.css の .ps-leg。罫の途中に文字が入る）。手段の印は画面と同じ形
 			var mode = modeCode(s.leg_mode, s.travel_by);
 			var by = mode ? modeLabel(mode) : (s.travel_by || t('travel', '移動'));
 			var leg = [];
 			if (s.travel_min) {
-				var from = (i === 0 && !startRow && start.text) ? withOrigin(t('legFrom', '%sから')) + gap : '';
-				leg.push(from + esc(by) + gap + esc(fmt(t('minutes', '%d分'), s.travel_min))
+				var from = (i === 0 && start.text) ? withOrigin(t('legFrom', '%sから')) + (ja ? '<span class="ps-gap"></span>' : ' ') : '';
+				leg.push(from + withIcon(modeIcon(mode, s.leg_kind), esc(by)) + gap + esc(fmt(t('minutes', '%d分'), s.travel_min))
 					+ (s.distance_m ? dot + esc(distLabel(s.distance_m)) : ''));
 			}
 			var wait = waitMinutes(s.wait_min);
-			if (wait) { leg.push(esc(fmt(t('waitOpen', '開くまで約%d分'), wait))); }
-			// 乗り物で別のエリアへ移る所は、札を立てずに余白で区切る（CSS の .ps-row--zone。境目の決め方は画面と同じ → zoneBreak）
-			var newZone = i > 0 && zoneBreak(s, spots[i - 1]);
+			if (wait) { leg.push(withIcon(icon('clock'), esc(fmt(t('waitOpen', '開くまで約%d分'), wait)))); }
+			// 乗る区間（電車・バス、車）は、歩く区間より墨を濃くする（画面と同じ。札は立てない）
+			var ride = !!(s.travel_min && mode && mode !== 'walk');
 			var time = s.arrive
 				? '<b>' + esc(s.arrive) + '</b>' + (s.leave ? '<small>' + range + esc(s.leave) + '</small>' : '')
 				: '<b>' + (i + 1) + '</b>';
-			var meta = [s.area, s.cat].filter(Boolean).map(jaText);
+			// 「エリア｜ジャンル」は画面のカードと同じ1行。区切りは言語ごと（catSep）
+			var place = [s.area, s.cat].filter(Boolean).map(jaText).join(esc(t('catSep', '｜')));
+			var meta = place ? [place] : [];
 			if (s.stay_min) { meta.push(esc(fmt(t('stayMin', '滞在%d分'), s.stay_min))); }
-			// 営業時間・定休日・最寄り駅（画面と同じ値。判断材料は隠さない。外国語では数字を確かめた訳、落ちたものは原文）
+			// 営業時間・定休日・最寄り駅（画面と同じ値・同じ印。判断材料は隠さない。外国語では数字を確かめた訳、落ちたものは原文）
 			var facts = [];
-			var fact = function (key, label, value) {
-				if (value) { facts.push('<span class="ps-fact"><span class="ps-label">' + esc(t(key, label)) + '</span>' + jaText(value) + '</span>'); }
+			var fact = function (svg, key, label, value) {
+				if (value) { facts.push('<span class="ps-fact"><span class="ps-label">' + withIcon(svg, esc(t(key, label))) + '</span>' + jaText(value) + '</span>'); }
 			};
-			fact('hoursLabel', '営業時間', s.hours);
-			fact('holidayLabel', '定休日', s.holiday);
-			fact('stationLabel', '最寄り駅', s.station);
+			fact(icon('clock'), 'hoursLabel', '営業時間', s.hours);
+			fact(icon('calendar'), 'holidayLabel', '定休日', s.holiday);
+			fact(icon('train'), 'stationLabel', '最寄り駅', s.station);
 
-			rows.push('<li class="ps-row' + (newZone ? ' ps-row--zone' : '') + '">'
-				+ (leg.length ? '<p class="ps-leg">' + leg.join('<span class="ps-gap"></span>') + '</p>' : '')
+			// 写真の枠。読み終えた写真があるスポットは、紙を置くときに写真を移す（placePaperPhotos）。
+			// 写真の無いスポット（と、まだ読み終えていない写真）は、画面のカードと同じ「名前の面」。空の箱にしない
+			var sid = s.id ? String(parseInt(s.id, 10)) : '';
+			var photo = (sid && paperPhoto(sid))
+				? '<div class="ps-ph" data-ph="' + esc(sid) + '"></div>'
+				: '<div class="ps-ph ps-ph--plate"><span class="ps-ph-name"' + jaAttr(s.title) + '>' + nameHtml(s.title) + '</span></div>';
+
+			return '<li class="ps-row">'
+				+ '<p class="ps-leg' + (ride ? ' ps-leg--ride' : '') + (leg.length ? '' : ' ps-leg--none') + '">'
+				+ (leg.length ? '<span class="ps-leg-in">' + leg.map(function (x) { return '<span>' + x + '</span>'; }).join('') + '</span>' : '')
+				+ '</p>'
 				+ '<div class="ps-stop">'
 				+ '<p class="ps-time">' + time + '</p>'
 				+ '<div class="ps-body">'
@@ -756,7 +846,9 @@ function mount(el, options) {
 				+ (s.reason ? '<p class="ps-reason"' + jaAttr(s.reason) + '>' + esc(s.reason) + '</p>' : '')
 				+ (meta.length ? '<p class="ps-meta">' + meta.map(function (m) { return '<span>' + m + '</span>'; }).join('') + '</p>' : '')
 				+ (facts.length ? '<p class="ps-facts">' + facts.join('') + '</p>' : '')
-				+ '</div></div></li>');
+				+ '</div>'
+				+ photo
+				+ '</div></li>';
 		});
 
 		// 満たせなかった条件のうち、当日の予定に響くもの（食事が無い・営業時間の外かもしれない）。画面と同じく紙にも出す
@@ -777,22 +869,83 @@ function mount(el, options) {
 
 		return '<div class="ps-head">'
 			+ (T.siteName ? '<p class="ps-site">' + esc(T.siteName) + '</p>' : '')
-			+ '<p class="ps-kind">' + esc(t('printKind', 'モデルコースのご案内')) + '</p>'
+			+ '<p class="ps-kind">' + esc(t('printKind', 'モデルコース')) + '</p>'
 			+ '</div>'
+			+ '<div class="ps-lead">'
 			+ '<h1 class="ps-title"' + jaAttr(data.title) + '>' + esc(data.title) + '</h1>'
-			+ (data.description ? '<p class="ps-desc"' + jaAttr(data.description) + '>' + esc(data.description) + '</p>' : '')
+			// 紹介文は左（時刻と文の柱の幅）、要約は右（写真の柱の幅）。下の立ち寄り先と同じ柱に揃える
+			+ '<div class="ps-intro">'
+			+ '<p class="ps-desc"' + jaAttr(data.description) + '>' + esc(data.description || '') + '</p>'
 			+ (sum.length ? '<p class="ps-sum">' + sum.map(function (x) { return '<span>' + x + '</span>'; }).join('') + '</p>' : '')
+			+ '</div>'
+			+ '</div>'
 			+ '<ol class="ps-list">' + rows.join('') + '</ol>'
-			+ (flags.length ? '<p class="ps-flag">' + flags.map(esc).join('<br>') + '</p>' : '')
 			+ '<div class="ps-foot' + (qr ? '' : ' ps-foot--noqr') + '">'
 			+ '<div class="ps-foot-text">'
 			+ (qr ? '<p class="ps-qr-lead">' + esc(t('printQrLead', 'スマートフォンで地図と乗換案内を開けます')) + '</p>'
 				+ '<p class="ps-url">' + esc(url) + '</p>' : '')
+			+ (flags.length ? '<p class="ps-flag">' + flags.map(esc).join('<br>') + '</p>' : '')
 			+ '<p class="ps-note">' + esc(t('printNote', '時刻は移動時間からの目安です。営業時間・定休日は公式情報でご確認ください。')) + '</p>'
 			+ (made ? '<p class="ps-made">' + esc(fmt(t('printMade', '%s 作成'), made)) + '</p>' : '')
 			+ '</div>'
 			+ qr
 			+ '</div>';
+	}
+
+	/**
+	 * 紙の写真の枠に、読み終えた写真を移す。
+	 *
+	 * 粗い写真は引き伸ばさない。枠いっぱいに敷くと 110dpi に届かない写真（元が幅130px しかないものがある）は、
+	 * 名前の面と同じ和紙の面の中央に、粗く見えない大きさで置く（130dpi より粗くしない。面の縁から3mm 空ける）。
+	 * 画面のカードは同じ写真を枠いっぱいに伸ばしているが、紙は手元でじっと見られるので、ぼけた写真を大きく刷らない
+	 */
+	function placePaperPhotos(sheet) {
+		Array.prototype.forEach.call(sheet.querySelectorAll('.ps-ph[data-ph]'), function (box) {
+			var img = paperPhoto(box.getAttribute('data-ph'));
+			if (!img) { return; }
+			var w = img.naturalWidth;
+			var h = img.naturalHeight;
+			img.removeAttribute('style');
+			if (paperDpi(w, h) < 110) {
+				var pad = 3;
+				var mm = Math.min(25.4 / 130, (PAPER_PH.w - pad * 2) / w, (PAPER_PH.h - pad * 2) / h);
+				img.style.width = (w * mm).toFixed(2) + 'mm';
+				img.style.height = (h * mm).toFixed(2) + 'mm';
+				box.classList.add('ps-ph--plate', 'ps-ph--small');
+			}
+			box.appendChild(img);
+		});
+	}
+
+	/**
+	 * 紙で使う書体を、先に読んでおく。
+	 *
+	 * 紙にだけ出る字（題字の横の「モデルコース」・注記・作成日）や、紙だけの組み合わせ（店名の明朝 600 など）は、
+	 * 画面で同じ書体・太さの字が使われていないと、印刷の時点でフォントが届いていない
+	 * （Google Fonts は字の範囲ごとのファイルを、画面に出た字の分だけ読む。印刷は押した瞬間に組んで始まる）。
+	 * 届いていない字は端末の別の明朝・ゴシックで刷られ、1行の中で書体が混ざる。
+	 * 紙のHTMLを一度組んで、そこに出る字を書体ごとに頼んでおく。書体と太さの組み合わせは print.css と同じ（変えるときは両方）。
+	 * 中国語・韓国語の面は Web フォントを使わないので、何も読まない
+	 */
+	function warmPaper(data) {
+		if (!document.fonts || !document.fonts.load) { return; }
+		var box = document.createElement('div');
+		try { box.innerHTML = printSheet(data); } catch (e) { return; }
+		var root = getComputedStyle(document.documentElement);
+		var textOf = function (sel) {
+			return Array.prototype.map.call(box.querySelectorAll(sel), function (n) { return n.textContent; }).join('');
+		};
+		[
+			['500', '--mincho', textOf('.ps-title, .ps-name')],        // 表題と、写真の無いスポットの名前の面
+			['600', '--mincho', textOf('.ps-site, .ps-name')],         // 題字と店名
+			['500', '--serif', textOf('.ps-time b') + '0123456789:/'], // 着く時刻と、ページ番号
+			['400', '--gothic', box.textContent]                       // そのほか全部
+		].forEach(function (f) {
+			var family = root.getPropertyValue(f[1]).trim();
+			if (!family || !f[2]) { return; }
+			// 届かなくても端末の書体で刷れるので、失敗は黙って流す
+			try { document.fonts.load(f[0] + ' 12px ' + family, f[2]).catch(function () {}); } catch (e) { /* 無視 */ }
+		});
 	}
 
 	/**
@@ -802,6 +955,7 @@ function mount(el, options) {
 	 * 画面ではずっと hidden（印刷のダイアログが開いているあいだも、画面の見た目は変わらない）。
 	 */
 	var printScrollY = null; // 印刷の直前に見ていた位置。afterPrint で戻す
+	var printWaiting = null; // 「PDFで保存・印刷」を押してから、写真が出そろうのを待っているあいだのタイマー（→ bindKeep）
 	function preparePrint(data) {
 		clearPrint();
 		// 紙のときは本文を消すので、文書が1〜2ページ分の高さになる。PC の Chrome はスクロール位置をその高さまで縮め、
@@ -813,9 +967,11 @@ function mount(el, options) {
 		sheet.className = 'ep-sheet';
 		sheet.hidden = true;
 		sheet.innerHTML = printSheet(data);
+		placePaperPhotos(sheet);
 		document.body.appendChild(sheet);
 		document.documentElement.classList.add('ep-print-plan');
 	}
+	// 紙ごと外す。中の写真（img）は paperPhotos が持ったままなので、次の印刷でも読み直さずに使える
 	function clearPrint() {
 		document.documentElement.classList.remove('ep-print-plan');
 		Array.prototype.forEach.call(document.querySelectorAll('.ep-sheet'), function (node) {
@@ -873,8 +1029,23 @@ function mount(el, options) {
 					if (planUrl(data)) {
 						persist(data).catch(function () { /* 残せなくても印刷は止めない */ });
 					}
-					preparePrint(data);
-					window.print();
+					// 写真が出そろっていれば（ふつうはそう。ボタンは結果のいちばん下にある）、押したその場で開く。
+					// 出そろう前に押されたときだけ、そろうのを待ってから開く。待つのは最長2秒 ――
+					// それ以上は待たせず、間に合わなかった写真は名前の面で刷る（待つほど、上の「確認が出る端末」に当たりやすくなる）
+					if (printWaiting) { return; }
+					var open = function () {
+						printWaiting = null;
+						if (!alive()) { return; } // 待つあいだに起動し直された（/nearby/ で出発点を変えた）
+						preparePrint(data);
+						window.print();
+					};
+					if (paperReady()) { open(); return; }
+					var since = Date.now();
+					printWaiting = setInterval(function () {
+						if (!paperReady() && Date.now() - since < 2000) { return; }
+						clearInterval(printWaiting);
+						open();
+					}, 60);
 					return;
 				}
 				// URLは待たずに組めるので、押したその場で共有・コピーする。残す処理は裏で走らせる
@@ -1006,6 +1177,10 @@ function mount(el, options) {
 			if (s.holiday) facts.push(withIcon(icon('calendar'), esc(t('holidayLabel', '定休日'))) + ' ' + factText(s.holiday));
 			// 最寄りの駅・バス停も誌面の原文。どの駅で降りるかの手掛かりになる
 			if (s.station) facts.push(withIcon(icon('train'), esc(t('stationLabel', '最寄り駅'))) + ' ' + factText(s.station));
+			// スマホでは営業時間などを畳む（4枚とも開いたままだと、カードの半分が同じ形の行になる）。PCでは開いたまま（ボタンは出さない）
+			var factsTg = facts.length
+				? '<button type="button" class="ts-tg" aria-expanded="false">' + esc(t('factsMore', '営業時間など')) + '</button>'
+				: '';
 
 			// カードの下のリンクは1つだけ。ひとつ前の場所からここまでの行き方（乗る区間は乗換案内、歩く区間は道順）を開く。
 			// 行き方の画面には行き先のピンも出るので、「地図で見る」（ピンだけ）とは並べない
@@ -1027,7 +1202,7 @@ function mount(el, options) {
 			var spotHref = spotUrl ? ' href="' + esc(spotUrl) + '"' : '';
 			var nameLang = jaAttr(s.title);
 
-			return '<li class="rs-step' + (newZone ? ' rs-step--zone' : '') + '" style="animation-delay:' + (i * 90) + 'ms">'
+			return '<li class="rs-step' + (newZone ? ' rs-step--zone' : '') + '" data-i="' + i + '" style="animation-delay:' + (i * 90) + 'ms">'
 				+ '<p class="rs-when">' + zoneMark + leg + when + '</p>'
 				+ '<article class="spot spot--text" data-spot="' + (s.id ? parseInt(s.id, 10) : '') + '">'
 				+ '<a class="rs-ph"' + spotHref + '><div class="noimg"><span class="noimg-name"' + nameLang + '>' + nameHtml(s.title) + '</span></div></a>'
@@ -1038,9 +1213,38 @@ function mount(el, options) {
 				+ '<h4 class="screen-reader-text"' + nameLang + '><a' + spotHref + ' tabindex="-1">' + nameHtml(s.title) + '</a></h4>'
 				+ '<p class="rs-reason"' + jaAttr(s.reason) + '>' + esc(s.reason) + '</p>'
 				+ (facts.length ? '<p class="ts-facts">' + facts.join('<br>') + '</p>' : '')
-				+ (acts.length ? '<div class="actions">' + acts.join('') + '</div>' : '')
+				+ (acts.length || factsTg ? '<div class="actions">' + acts.join('') + factsTg + '</div>' : '')
 				+ '</div></article></li>';
 		}).join('');
+
+		// その日の流れ（スマホだけ。2026-10-07 案B）。カードを横にすべらせる形にしたので、何時にどこへ行くかを先に1枚で見せる。
+		// /nearby/ の「その日のコース」と同じ組み（時刻・名前・滞在、あいだに移動）。行を押すと、そのカードへ移る
+		var flow = '';
+		if (spots.length) {
+			var rows = '';
+			if (origin) {
+				rows += '<li class="rf-row"><span class="rf-in"><span class="rf-t">' + esc(plan.begin || '') + '</span>'
+					+ '<span class="rf-n">' + withOrigin('%s') + '</span><span class="rf-r">' + esc(t('depart', '出発')) + '</span></span></li>';
+			}
+			spots.forEach(function (s, i) {
+				var mode = modeCode(s.leg_mode, s.travel_by);
+				if (s.travel_min) {
+					var by = mode ? modeLabel(mode) : (s.travel_by || t('travel', '移動'));
+					rows += '<li class="rf-leg' + (mode && mode !== 'walk' ? ' rf-leg--ride' : '') + '">'
+						+ withIcon(modeIcon(mode, s.leg_kind), esc(by)) + gap + esc(fmt(t('minutes', '%d分'), s.travel_min))
+						+ (s.distance_m ? dot + esc(distLabel(s.distance_m)) : '') + '</li>';
+				}
+				rows += '<li class="rf-row"><a class="rf-in" href="#" data-go="' + i + '"><span class="rf-t">' + esc(s.arrive || String(i + 1)) + '</span>'
+					+ '<span class="rf-n"' + jaAttr(s.title) + '>' + esc(s.title) + '</span>'
+					+ '<span class="rf-r">' + (s.stay_min ? esc(fmt(t('stayMin', '滞在%d分'), s.stay_min)) : '') + '</span></a></li>';
+			});
+			flow = '<div class="rs-flow"><h4 class="rs-sub">' + esc(t('flowTitle', 'その日の流れ')) + '</h4><ol class="rf-list">' + rows + '</ol></div>'
+				// 行き先の見出しと、何枚目かの数・前後のボタン（スマホだけ）
+				+ '<div class="rs-nav"><h4 class="rs-sub">' + esc(t('spotsTitle', '行き先')) + '</h4>'
+				+ '<span class="rs-count" aria-hidden="true">1 / ' + spots.length + '</span>'
+				+ '<button type="button" class="rs-prev" aria-label="' + esc(t('prevSpot', '前の行き先')) + '">←</button>'
+				+ '<button type="button" class="rs-next" aria-label="' + esc(t('nextSpot', '次の行き先')) + '">→</button></div>';
+		}
 
 		var stats = [];
 		if (origin) stats.push('<span>' + withOrigin(t('fromLabel', '%s発')) + '</span>');
@@ -1095,6 +1299,9 @@ function mount(el, options) {
 		// 代わりに1区間目だけを開き、続きは各カードのリンクに任せる
 		var route = '';
 		var routeHint = '';
+		// 画面の下に固定するボタン（スマホだけ）に入れる、短い名前とURL
+		var dockUrl = '';
+		var dockText = '';
 		if (plan.map_kind === 'legs') {
 			var first = spots[0] || {};
 			var firstMode = modeCode(first.leg_mode, first.travel_by);
@@ -1103,6 +1310,8 @@ function mount(el, options) {
 				var firstText = firstMode === 'transit' ? t('openFirstTransit', '最初の行き先までの乗換案内を開く')
 					: (firstMode === 'car' ? t('dirCar', '車のルートを見る') : t('openFirstWalk', '最初の行き先までの道順を開く'));
 				route = '<a class="r-map" href="' + esc(firstUrl) + '" target="_blank" rel="noopener">' + esc(firstText) + '</a>';
+				dockUrl = firstUrl;
+				dockText = t(MODES[firstMode].link[0], MODES[firstMode].link[1]);
 			}
 			// 乗換案内はカードごとに開く、と一言添える（全体のルートを探す人が迷わないように）
 			var hasTransit = spots.some(function (s) { return modeCode(s.leg_mode, s.travel_by) === 'transit' && httpUrl(s.leg_url); });
@@ -1111,7 +1320,13 @@ function mount(el, options) {
 			}
 		} else if (httpUrl(plan.map_url)) {
 			route = '<a class="r-map" href="' + esc(plan.map_url) + '" target="_blank" rel="noopener">' + esc(t('openRoute', 'Googleマップでルートを開く')) + '</a>';
+			dockUrl = plan.map_url;
+			dockText = t('openRouteShort', 'Googleマップで開く');
 		}
+		// 地図と共有は、一番下まで読まないと押せなかった（4か所のコースで約4,300px下）。スマホでは画面の下に固定する
+		var dock = '<div class="r-dock">'
+			+ (dockUrl ? '<a class="r-dock-map" href="' + esc(dockUrl) + '" target="_blank" rel="noopener">' + esc(dockText) + '</a>' : '')
+			+ '<button type="button" class="r-dock-keep">' + esc(t('shareShort', '共有')) + '</button></div>';
 
 		// 予算の調整チップ。plan.price_band が空＝食事の値段が分からないコースでは出さない。
 		// 「押しても何も変わらない」ボタンを置かないための条件（データが無いことを隠さない）
@@ -1171,7 +1386,9 @@ function mount(el, options) {
 		// 共有されたコースでは「もう一度診断する」ではなく、自分のコースを作る入口にする
 		var again = shared
 			? '<a class="r-reset" href="' + esc(httpUrl(options.makeUrl) || '/') + '">' + esc(t('makeOwn', '自分のコースを作る')) + '</a>'
-			: '<button type="button" class="r-reset" id="qReset">' + esc(t('startOver', 'もう一度診断する')) + '</button>';
+			: '<button type="button" class="r-reset" data-reset>' + esc(t('startOver', 'もう一度診断する')) + '</button>';
+		// スマホではコース名と紹介文のあいだに浮いて見えたので、共有の欄の下に1行で置く（PCはコース名の横のまま）
+		var againEnd = '<p class="r-again">' + again.replace('class="r-reset"', 'class="r-reset r-reset--end"') + '</p>';
 
 		el.classList.remove('is-busy');
 		el.classList.add('is-result');
@@ -1183,19 +1400,25 @@ function mount(el, options) {
 			+ (data.description ? '<p class="res-desc"' + jaAttr(data.description) + '>' + esc(data.description) + '</p>' : '')
 			+ '<div class="res-stats">' + stats.join('') + '<span class="res-badge">' + badge + '</span></div>'
 			+ '</div>'
+			+ flow
 			+ '<ol class="rs-grid">' + steps + '</ol>'
 			+ '<div class="r-foot">' + route + chips + '</div>'
 			+ routeHint + flagNote
 			+ '<p class="res-note">' + esc(t('timeNote', '時刻は移動時間からの目安です。営業時間・定休日は各スポットのページと公式情報でご確認ください。')) + '</p>'
 			+ keep
+			+ againEnd
+			+ dock
 			// 紙・PDFからコースに戻れるように（中身は印刷のときに入れる。空のあいだは出ない）
 			+ '<p class="res-print-url">' + esc(data.share_url || '') + '</p>'
 			+ '</div>';
 		loadPhotos(ids);
 		bindKeep(data);
+		// 紙・PDFで使う書体を先に読んでおく（印刷は押した瞬間に組むので、その場では間に合わない → warmPaper）。
+		// 少し遅らせるのは、結果を描いた直後の描画と、画面の書体・写真の読み込みを先に通すため
+		setTimeout(function () { if (alive()) { warmPaper(data); } }, 400);
 
-		var resetBtn = el.querySelector('#qReset');
-		if (resetBtn) { resetBtn.addEventListener('click', reset); }
+		Array.prototype.forEach.call(el.querySelectorAll('.r-reset[data-reset]'), function (b) { b.addEventListener('click', reset); });
+		bindPhone();
 		Array.prototype.forEach.call(el.querySelectorAll('.b-chip'), function (btn) {
 			btn.addEventListener('click', function () {
 				if (sending) { return; }
@@ -1208,6 +1431,106 @@ function mount(el, options) {
 		if (user) {
 			reveal(el.querySelector('.res-head'), true);
 			focusOn(el.querySelector('.res-title'));
+		}
+	}
+
+	/*
+	 * スマホの結果画面の動き（2026-10-07 案B → 60_デザイン/2026-10-07_プランのスマホと帯の案.md）。
+	 * 形は CSS が決める（600px 以下だけ、カードを横にすべらせる・流れの表・下に固定するボタンを出す）。
+	 * ここは押したときの動きだけ。PC では流れの表もボタンも見えないので、何も起きない
+	 */
+	function bindPhone() {
+		var grid = el.querySelector('.rs-grid');
+		var count = el.querySelector('.rs-count');
+		if (!grid) { return; }
+		var cards = grid.children;
+		var sliding = function () { return grid.scrollWidth > grid.clientWidth + 4; };
+		// 1枚ぶんの送り幅（カードの幅＋間）。2枚目の位置から測る（間は CSS が持っている）
+		var pitch = function () { return cards.length > 1 ? cards[1].offsetLeft - cards[0].offsetLeft : grid.clientWidth; };
+		var current = function () { return Math.max(0, Math.min(cards.length - 1, Math.round(grid.scrollLeft / pitch()))); };
+		var go = function (i) {
+			i = Math.max(0, Math.min(cards.length - 1, i));
+			grid.scrollTo({ left: i * pitch(), behavior: 'smooth' });
+		};
+		var shown = -1;
+		var sync = function () {
+			var i = current();
+			if (i === shown) { return; }
+			shown = i;
+			if (count) { count.textContent = (i + 1) + ' / ' + cards.length; }
+			var prev = el.querySelector('.rs-prev');
+			var next = el.querySelector('.rs-next');
+			if (prev) { prev.disabled = i === 0; }
+			if (next) { next.disabled = i === cards.length - 1; }
+		};
+		grid.addEventListener('scroll', function () { window.requestAnimationFrame(sync); }, { passive: true });
+		sync();
+		var prevBtn = el.querySelector('.rs-prev');
+		var nextBtn = el.querySelector('.rs-next');
+		if (prevBtn) { prevBtn.addEventListener('click', function () { go(current() - 1); }); }
+		if (nextBtn) { nextBtn.addEventListener('click', function () { go(current() + 1); }); }
+		// 流れの行を押したら、そのカードへ。カードの列が見える所までページも動かす
+		Array.prototype.forEach.call(el.querySelectorAll('.rf-in[data-go]'), function (a) {
+			a.addEventListener('click', function (e) {
+				e.preventDefault();
+				var i = parseInt(a.getAttribute('data-go'), 10) || 0;
+				if (sliding()) {
+					reveal(el.querySelector('.rs-nav'), true);
+					go(i);
+				} else {
+					reveal(cards[i], true);
+				}
+				var link = cards[i] && cards[i].querySelector('.rs-ph[href], .actions a');
+				if (link) { link.focus({ preventScroll: true }); }
+			});
+		});
+		// 営業時間など（スマホだけ畳んである）
+		Array.prototype.forEach.call(el.querySelectorAll('.ts-tg'), function (b) {
+			b.addEventListener('click', function () {
+				var step = b.closest('.rs-step');
+				var open = !step.classList.contains('is-facts');
+				step.classList.toggle('is-facts', open);
+				b.setAttribute('aria-expanded', open ? 'true' : 'false');
+			});
+		});
+		// 紹介文は3行で畳む（スマホだけ）。3行に収まる文には「続きを読む」を出さない
+		var desc = el.querySelector('.res-desc');
+		if (desc && window.matchMedia('(max-width: 600px)').matches) {
+			desc.classList.add('is-clamp');
+			if (desc.scrollHeight > desc.clientHeight + 2) {
+				var more = document.createElement('button');
+				more.type = 'button';
+				more.className = 'res-more';
+				more.setAttribute('aria-expanded', 'false');
+				more.textContent = t('readMore', '続きを読む');
+				desc.insertAdjacentElement('afterend', more);
+				more.addEventListener('click', function () {
+					var open = desc.classList.contains('is-clamp');
+					desc.classList.toggle('is-clamp', !open);
+					more.setAttribute('aria-expanded', open ? 'true' : 'false');
+					more.textContent = open ? t('readLess', '閉じる') : t('readMore', '続きを読む');
+				});
+			} else {
+				desc.classList.remove('is-clamp');
+			}
+		}
+		// カードの下の「ルートを開く」が見えているあいだは、下に固定したボタンを隠す（同じボタンを2つ並べない）
+		var dock = el.querySelector('.r-dock');
+		var inPlace = el.querySelector('.r-foot .r-map');
+		if (dock && inPlace && 'IntersectionObserver' in window) {
+			new IntersectionObserver(function (entries) {
+				dock.classList.toggle('is-off', entries[0].isIntersecting);
+			}).observe(inPlace);
+		}
+		// 下に固定した「共有」は、共有の欄へ移るだけ（LINE・コピー・PDF から選ぶ）
+		var keepBtn = el.querySelector('.r-dock-keep');
+		if (keepBtn) {
+			keepBtn.addEventListener('click', function () {
+				var box = el.querySelector('.r-keep');
+				reveal(box, true);
+				var first = box && box.querySelector('.r-keep-btn');
+				if (first) { first.focus({ preventScroll: true }); }
+			});
 		}
 	}
 
