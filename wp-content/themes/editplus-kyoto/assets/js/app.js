@@ -613,8 +613,9 @@
 })();
 
 /**
- * トップのヒーロー：写真を選んでいないときは同梱の3枚を2秒ずつ見せて入れ替える（2026-10-07。もとは Figma「ヒーローの動き」の4秒・1.6秒だったが、遅いという指示で同日に半分にした。Figmaのその絵は同日に削除したので、秒数の正はここ）。
- * 見た目（重なり方・1.6秒の動き）は style.css の .hero-slide。ここは順番と止める条件だけを持つ。
+ * トップのヒーロー：写真を選んでいないときは同梱の3枚を3秒ごとに入れ替える（2026-10-07。もとは Figma「ヒーローの動き」の4秒・1.6秒だったが、遅いという指示で同日に半分にした。Figmaのその絵は同日に削除したので、既定の秒数の正はここ）。
+ * 編集部が管理画面で写真を2枚以上選んだときも、同じ動きでその順に入れ替える。切り替わる間隔も管理画面で選べる（2026-10-08。.hero-ctl の data-hold に秒で入る。書かれていなければ既定の2秒）。
+ * 見た目（重なり方・0.8秒の動き）は style.css の .hero-slide。ここは順番と止める条件だけを持つ。
  * 動きを減らす設定の端末では始めない（1枚目のまま・ボタンも出さない）。止めるボタンはキーボードで選んだときだけ見える（style.css .hero-pause）。
  * 画面の外にあるとき・タブが裏にあるときは止める（見ていないのに次の写真を読み込ませない）。
  */
@@ -626,8 +627,12 @@
 	if (slides.length < 2 || !ctl || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches)) {
 		return;
 	}
-	var HOLD = 2000;   // 1枚を見せる時間
+	// 写真が切り替わる間隔。管理画面で選んだ秒数（inc/hero-media.php が data-hold に書く）。無い・数字でないときは既定の3秒。
+	// 選んだ秒数は「切り替わりから次の切り替わりまで」なので、重なる動き（ENTER）のぶんを引いて待つ
+	// （引かないと「4秒」を選んで 4.8秒ごとになる）
 	var ENTER = 800;   // 次の写真が重なりきるまで（style.css の ep-hero-enter と同じ）
+	var holdSec = parseFloat(ctl.getAttribute('data-hold'));
+	var HOLD = Math.max(1000, (holdSec > 0 ? holdSec : 3) * 1000 - ENTER);   // 1枚が止まって見える時間
 	var btn = ctl.querySelector('.hero-pause');
 	var cur = 0;
 	var timer = null;
