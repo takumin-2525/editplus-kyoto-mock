@@ -521,8 +521,9 @@ function mount(el, options) {
 	 * 一覧が届いた時点で紙用の写真を読み始め、読み終えた img をスポットのIDで持っておく。紙を組むときは、その img をそのまま紙へ移す
 	 * （同じ URL で img を作り直すと、読み込み済みかどうかがブラウザのキャッシュ任せになる）。
 	 */
-	// 紙の写真の枠（mm）。print.css の --ps-ph-w・--ps-ph-h と同じ値（変えるときは両方）
-	var PAPER_PH = { w: 42, h: 28 };
+	// 紙の写真の枠（mm）。print.css の --ps-ph-w・--ps-ph-h と同じ値（変えるときは両方）。
+	// 10/8 の手直しまで 42×28 と書いてあり、枠（44×29.33）より約5%小さく見積もっていた（細かさを甘く数えていた）
+	var PAPER_PH = { w: 44, h: 29.33 };
 	var paperPhotos = {};   // スポットのID → img（読み込み中のものも入る。使うのは読み終えたものだけ → paperPhoto）
 	var photosAsked = null; // 写真の一覧を取りに行っている最中だけ、その Promise
 	// 枠いっぱいに敷いたときの細かさ（dpi）。足りないほうの辺で決まる
@@ -534,7 +535,7 @@ function mount(el, options) {
 	 *
 	 * 画面のカードは medium_large → large → medium の順で選ぶが、元の写真が幅768px より小さいスポットは
 	 * medium（幅300px）しか当たらない（誌面から起こした写真の多くは幅680px前後で、medium_large が作られない）。
-	 * 300px を紙の枠（42mm）に敷くと 180dpi 前後で、PDF を画面で開くと甘く見える。そういう写真は元の大きさ（full）を使う。
+	 * 300px を紙の枠（44mm）に敷くと 170dpi 前後で、PDF を画面で開くと甘く見える。そういう写真は元の大きさ（full）を使う。
 	 * どれも 220dpi に届かないとき（元が小さい写真）は、いちばん大きいもの。それでも粗い写真は、引き伸ばさずに小さく置く（→ placePaperPhotos）
 	 */
 	function paperSource(media) {
@@ -546,7 +547,7 @@ function mount(el, options) {
 		});
 		if (!list.length) { return media.source_url || ''; }
 		list.sort(function (a, b) { return a.width - b.width; });
-		// 元の写真（full）が大きすぎるときは候補から外す（数MBの写真を、42mm の枠のために読ませない）。
+		// 元の写真（full）が大きすぎるときは候補から外す（数MBの写真を、44mm の枠のために読ませない）。
 		// 幅1600px を超える元には必ず large までの縮小版があるので、外しても候補は残る
 		var fit = list.filter(function (s) { return s.width <= 1600; });
 		if (fit.length) { list = fit; }
@@ -797,6 +798,32 @@ function mount(el, options) {
 			sum.push(withIcon(modeIcon(chosen, ''), esc(chosen ? modeLabel(chosen) : plan.transport_label)));
 		}
 
+		// 満たせなかった条件のうち、当日の予定に響くもの（食事が無い・営業時間の外かもしれない）。画面と同じく紙にも出す
+		var relaxed = Array.isArray(data.relaxed) ? data.relaxed : [];
+		var flags = [];
+		if (relaxed.indexOf('eat') !== -1) { flags.push(t('noMealNote', '※ この条件では合う食事処が見つからず、このコースに食事は入っていません')); }
+		if (relaxed.indexOf('hours') !== -1) { flags.push(t('hoursNote', '※ 営業時間の合う店が少なく、着く時刻が営業時間の外になる場所があるかもしれません')); }
+
+		// 末尾: このコースのページを開くQR。URLの文字はQRが読めないとき用に小さく1行だけ。
+		// 合言葉の無い古い結果（URLを作れない）では、QRもURLも出さない
+		var url = planUrl(data);
+		var qr = qrSvg(url);
+		// 作成日は印刷した日（この紙がいつの情報かを示す）。書き方はページの言語に任せる
+		var made = '';
+		try {
+			made = new Date().toLocaleDateString(document.documentElement.lang || 'ja', { year: 'numeric', month: 'long', day: 'numeric' });
+		} catch (e) { made = ''; }
+		var foot = '<div class="ps-foot' + (qr ? '' : ' ps-foot--noqr') + '">'
+			+ '<div class="ps-foot-text">'
+			+ (qr ? '<p class="ps-qr-lead">' + esc(t('printQrLead', 'スマートフォンで地図と乗換案内を開けます')) + '</p>'
+				+ '<p class="ps-url">' + esc(url) + '</p>' : '')
+			+ (flags.length ? '<p class="ps-flag">' + flags.map(esc).join('<br>') + '</p>' : '')
+			+ '<p class="ps-note">' + esc(t('printNote', '時刻は移動時間からの目安です。営業時間・定休日は公式情報でご確認ください。')) + '</p>'
+			+ (made ? '<p class="ps-made">' + esc(fmt(t('printMade', '%s 作成'), made)) + '</p>' : '')
+			+ '</div>'
+			+ qr
+			+ '</div>';
+
 		var rows = spots.map(function (s, i) {
 			// ひとつ前の場所からの移動（「徒歩9分・553m」「電車・バス16分・2.4km」）と、開店を待つ時間。
 			// 立ち寄り先どうしを区切る罫の上に置く（print.css の .ps-leg。罫の途中に文字が入る）。手段の印は画面と同じ形
@@ -848,25 +875,15 @@ function mount(el, options) {
 				+ (facts.length ? '<p class="ps-facts">' + facts.join('') + '</p>' : '')
 				+ '</div>'
 				+ photo
-				+ '</div></li>';
+				+ '</div>'
+				+ (i === spots.length - 1 ? foot : '')
+				+ '</li>';
 		});
 
-		// 満たせなかった条件のうち、当日の予定に響くもの（食事が無い・営業時間の外かもしれない）。画面と同じく紙にも出す
-		var relaxed = Array.isArray(data.relaxed) ? data.relaxed : [];
-		var flags = [];
-		if (relaxed.indexOf('eat') !== -1) { flags.push(t('noMealNote', '※ この条件では合う食事処が見つからず、このコースに食事は入っていません')); }
-		if (relaxed.indexOf('hours') !== -1) { flags.push(t('hoursNote', '※ 営業時間の合う店が少なく、着く時刻が営業時間の外になる場所があるかもしれません')); }
-
-		// 末尾: このコースのページを開くQR。URLの文字はQRが読めないとき用に小さく1行だけ。
-		// 合言葉の無い古い結果（URLを作れない）では、QRもURLも出さない
-		var url = planUrl(data);
-		var qr = qrSvg(url);
-		// 作成日は印刷した日（この紙がいつの情報かを示す）。書き方はページの言語に任せる
-		var made = '';
-		try {
-			made = new Date().toLocaleDateString(document.documentElement.lang || 'ja', { year: 'numeric', month: 'long', day: 'numeric' });
-		} catch (e) { made = ''; }
-
+		// 末尾の塊（QR・URL・注記）は、最後の立ち寄り先の li の中に置く。外に置くと、2ページ目以降でページの境目に掛かったとき、
+		// 塊の途中で切れる（QRと作成日だけが次のページ）か、QRの塊だけが次のページに落ちた。break-before: avoid は1ページ目でしか
+		// 効かなかった（2026-10-08 実測: 9件のコース22通りのうち9通りで、3ページ目がQRと注記だけ）。
+		// 「割らない塊」（.ps-row の break-inside: avoid）に入れておけば、入らないときは最後の1件ごと次のページへ送られる
 		return '<div class="ps-head">'
 			+ (T.siteName ? '<p class="ps-site">' + esc(T.siteName) + '</p>' : '')
 			+ '<p class="ps-kind">' + esc(t('printKind', 'モデルコース')) + '</p>'
@@ -880,16 +897,8 @@ function mount(el, options) {
 			+ '</div>'
 			+ '</div>'
 			+ '<ol class="ps-list">' + rows.join('') + '</ol>'
-			+ '<div class="ps-foot' + (qr ? '' : ' ps-foot--noqr') + '">'
-			+ '<div class="ps-foot-text">'
-			+ (qr ? '<p class="ps-qr-lead">' + esc(t('printQrLead', 'スマートフォンで地図と乗換案内を開けます')) + '</p>'
-				+ '<p class="ps-url">' + esc(url) + '</p>' : '')
-			+ (flags.length ? '<p class="ps-flag">' + flags.map(esc).join('<br>') + '</p>' : '')
-			+ '<p class="ps-note">' + esc(t('printNote', '時刻は移動時間からの目安です。営業時間・定休日は公式情報でご確認ください。')) + '</p>'
-			+ (made ? '<p class="ps-made">' + esc(fmt(t('printMade', '%s 作成'), made)) + '</p>' : '')
-			+ '</div>'
-			+ qr
-			+ '</div>';
+			// 立ち寄り先が1件も無い紙は組まない（preparePrint が先に帰る）が、塊の置き場が無くなって消えるよりは外に出す
+			+ (rows.length ? '' : foot);
 	}
 
 	/**

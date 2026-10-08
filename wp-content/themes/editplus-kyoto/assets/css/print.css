@@ -28,6 +28,11 @@
 @page sheet {
   size: A4 portrait;
   margin: 18mm 20mm 16mm;
+  /* 上にも空の箱を置く。Chrome の印刷で「ヘッダーとフッター」が入っていると（既定で入っている）、どのページの上にも
+     ブラウザの日時とページ名が刷られ、「画面を印刷した紙」に見える。日付とURLは紙の末尾に自前で入れてある */
+  @top-center {
+    content: "";
+  }
   @bottom-center {
     content: counter(page) " / " counter(pages);
     font-family: "Cormorant Garamond", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
@@ -37,9 +42,12 @@
     color: #666b63;
   }
 }
+/* 1ページ目は、箱を無くす（content: none）のではなく、空の箱（""）を置く。
+   Chrome の印刷で「ヘッダーとフッター」が入っていると（既定で入っている）、余白の箱の無いページの下にだけ
+   ブラウザのURLと「1/2」が刷られ、2ページ目の「2 / 2」と不揃いになっていた。空の箱があればブラウザは下に何も刷らない */
 @page sheet:first {
   @bottom-center {
-    content: none;
+    content: "";
   }
 }
 
@@ -338,11 +346,11 @@ html:not([lang^="ja"]):not([lang^="zh"]) .ep-sheet .ps-kind {
   margin-top: 14pt;
   padding-top: 11pt;
   border-top: .5pt solid var(--ps-ink);
+  /* この塊は、最後の立ち寄り先の li（.ps-row。割らない塊）の中にある（quiz.js の printSheet）。
+     入らないときは、最後の1件ごと次のページへ送られる。以前は ol の外に置いて break-before: avoid で前の行に付けていたが、
+     2ページ目以降では効かず、塊の途中で切れるか、QRの塊だけが次のページに落ちた（2026-10-08 手直し） */
   break-inside: avoid;
   page-break-inside: avoid;
-  /* QRの塊だけが次のページに落ちないように。入らないときは、最後の立ち寄り先ごと次のページへ送らせる */
-  break-before: avoid;
-  page-break-before: avoid;
 }
 .ep-sheet .ps-foot-text {
   flex: 1;

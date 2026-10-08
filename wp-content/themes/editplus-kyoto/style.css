@@ -3,7 +3,7 @@ Theme Name: EditPlus Kyoto Concierge
 Theme URI: https://github.com/takumin-2525/editplus-web-renewal
 Author: 高速オフセット / 株式会社エディットプラス
 Description: 京都・大阪観光コンシェルジュ リニューアル用の自作テーマ。60_デザイン/kyoto-concierge-rough.html のデザインを再現。
-Version: 0.9.71
+Version: 0.9.72
 Requires at least: 6.0
 Requires PHP: 8.0
 Text Domain: editplus-kyoto
@@ -53,6 +53,14 @@ html[lang^="zh"],html[lang^="ko"]{
   --mincho:"Hiragino Mincho ProN","Yu Mincho",YuMincho,"Songti SC",serif;
   --gothic:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic Medium","Noto Sans JP",system-ui,sans-serif;
   --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+}
+/* 英語・スペイン語は、和文の2書体に無い字を、和文の端末の書体より先に欧文の端末の書体で出す（2026-10-08 手直し）。
+   長音つきの母音（ō ū。「Chōhō-ji」「Shijō Kawaramachi」）はしっぽり明朝にも Zen Kaku Gothic にも入っておらず、
+   その1字だけヒラギノで出ていた（ヒラギノの ō は幅が広く、語の中で浮く）。欧文の書体の ō なら、前後の字と幅がそろう。
+   Web フォントにある字（ふつうの英字・かな・漢字）の見え方は変わらない */
+html[lang^="en"],html[lang^="es"]{
+  --mincho:"EP Yakumono","Shippori Mincho B1","Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Hiragino Mincho ProN","Yu Mincho",YuMincho,"Songti SC",serif;
+  --gothic:"Zen Kaku Gothic New","Helvetica Neue",Helvetica,Arial,"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic Medium","Noto Sans JP",system-ui,sans-serif;
 }
 /* ダークモードは出さない（2026-09-11 定例で廃止に合意。端末の設定に関わらず和紙の地で見せる） */
 
@@ -453,7 +461,14 @@ section{padding:46px 0}
   .res-desc.is-clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
   .res-more{display:inline-flex;align-items:center;min-height:44px;margin:0 0 -6px;padding:0;border:0;background:none;font:inherit;font-size:13px;color:var(--indigo);cursor:pointer}
   /* 要点（「◯◯発」「歩いて回れるコース」「10:00〜13:55」…）は2列の枠に。札（コンシェルジュの提案）は枠の下に1行 */
-  .res-stats{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-top:16px;background:var(--card);border:1px solid var(--line);color:var(--sumi-soft)}
+  /* 列は「左45〜50%・右50〜55%」。ただの 1fr 1fr だと、折り返さない中身（アイコンつきの要約「Train or bus ×2 + on foot ×5」）が
+     自分の列を押し広げ、もう片方が56pxまで潰れて「From / Kyot / o / Stati / on」と数文字ずつ折れていた
+     （英語・スペイン語・韓国語、日本語も乗り物のコース。2026-10-08 手直し）。
+     右の列は中身の幅まで広がるが55%で止まり、左は必ず45%残る。短い中身（「歩いて回れるコース」）はこれまでどおり半々で1行に入る。
+     枠の中だけ .ep-nb の「折らない」を外し、長い要約は右の列の中で折る（アイコンと最初の語は必ず同じ行に入る幅がある）。
+     マスは行の高さいっぱいに伸ばす（上の flex 用の align-items:center のままだと、高さの違うマスの間で縦の罫が途切れる） */
+  .res-stats{display:grid;grid-template-columns:minmax(45%,1fr) minmax(50%,max-content);align-items:stretch;gap:0;margin-top:16px;background:var(--card);border:1px solid var(--line);color:var(--sumi-soft)}
+  .res-stats .ep-nb{white-space:normal}
   .res-stats>span:not(.res-badge){padding:10px 12px;border-bottom:1px solid var(--line);line-height:1.6}
   .res-stats>span:not(.res-badge):nth-child(odd){border-right:1px solid var(--line)}
   .res-badge{grid-column:1/-1;justify-self:start;margin:10px 12px;border:0;background:none;padding:0;color:var(--gold-ink)}
@@ -1006,11 +1021,16 @@ section{padding:46px 0}
 .entry-body .wp-block-table thead{border-bottom:0}
 .entry-body td{color:var(--sumi)}
 
-/* 残りの写真（スポットの2枚目から）。2枚ずつの行で、行の中は高さがそろう（幅を「幅÷高さ」の比 --ph-ratio で分け合う）。
-   小さい写真のある行は --ph-max で止まり、行ごと左に寄る。番号は振らない。スマホは1枚ずつ縦に（横にすべらせない） */
-.entry-gallery{display:flex;flex-direction:column;gap:16px;margin:44px 0 0}
-.entry-gallery-row{display:flex;align-items:flex-start;gap:16px}
-.entry-gallery-row .entry-photo{flex:var(--ph-ratio,1) 1 0%;min-width:0}
+/* 残りの写真（スポットの2枚目から）。行ごとに枚数を変えて、どの行も柱の幅ちょうどに収める（行の中は高さがそろう。写真は切らない）。
+   行の分け方と写真ごとの幅は PHP が決める（inc/entry.php の editplus_entry_gallery。PC 用 --pf/--pg/--pm、スマホ用 --sf/--sg/--sm）。
+   幅＝（行の幅 − 写真の間 × --pg）× --pf。上限 --pm は元の1.2倍までの幅（引き伸ばさない）。
+   行は div で包まず、行の切れ目に「改行」（.entry-gallery-br）を置く ―― PC とスマホで切れ目の場所が違うため。
+   行と行の間は row-gap ではなく写真の下の余白で空ける（改行は高さ0の行になるので、row-gap だと間が2重になる）。
+   その分、並びの下を同じだけ詰める。番号は振らない。横にすべらせない */
+.entry-gallery{--eg-gap:16px;display:flex;flex-wrap:wrap;align-items:flex-start;column-gap:var(--eg-gap);margin:44px 0 calc(-1 * var(--eg-gap))}
+.entry-gallery .entry-photo{flex:0 0 auto;width:calc((100% - var(--pg,0) * var(--eg-gap)) * var(--pf,1));max-width:var(--pm,100%);margin-bottom:var(--eg-gap)}
+.entry-gallery-br{flex:0 0 100%;height:0}
+.entry-gallery-br--sp{display:none}
 
 /* 基本情報と地図。本文と同じ柱に、本文の見出しと同じ形の見出しで。
    section 要素の既定の padding（46px）は打ち消す。残すと、見出しの上の空きが本文の中の見出しより46px広くなる */
@@ -1068,9 +1088,12 @@ section{padding:46px 0}
   .entry-photo--lead .photo-credit{padding-right:calc(-1 * var(--bleed))}
 }
 @media(max-width:600px){
-  /* 残りの写真は1枚ずつ縦に。幅は柱か、元の1.2倍（--ph-solo）までの小さいほう */
-  .entry-gallery-row{flex-direction:column}
-  .entry-gallery-row .entry-photo{flex:none;width:100%;max-width:min(100%,var(--ph-solo,var(--ph-max,100%)))}
+  /* 残りの写真は、スマホ用の行の分け方に切り替える（横長・正方形は1枚で柱いっぱい、縦長と小さい写真は2枚並べる）。
+     以前は1枚ずつ縦に並べ、小さい写真は柱より狭いまま左に寄っていた（幅が 315／200／211／315／222px… と1枚ごとに違った） */
+  .entry-gallery{--eg-gap:12px}
+  .entry-gallery .entry-photo{width:calc((100% - var(--sg,0) * var(--eg-gap)) * var(--sf,1));max-width:var(--sm,100%)}
+  .entry-gallery-br--pc{display:none}
+  .entry-gallery-br--sp{display:block}
 }
 
 /* qr: 取材コンセプトのバナー（rough.html の .qr 移植） */
@@ -1786,7 +1809,8 @@ body.is-book-full{overflow:hidden}
    写真の下に1行の札（エリア｜ジャンル・名前・営業時間）と「詳しく見る」。
    カードを箱で囲まない。本文の途中で箱が続くと広告の枠に見える（誌面の店紹介も写真＋キャプションの組み） */
 .ep-inline-spot{margin:4px 0 34px}
-.ep-inline-spot__photo{display:block;overflow:hidden;background:var(--panel)}
+/* 写真は元の1.2倍まで（--ph-max。article-spot.php が渡す）。届かない小さい写真は、引き伸ばさずに柱の左端に置く（記事の型の写真と同じ決まり） */
+.ep-inline-spot__photo{display:block;overflow:hidden;background:var(--panel);max-width:min(100%,var(--ph-max,100%))}
 .ep-inline-spot__photo img{display:block;width:100%;height:auto;aspect-ratio:3/2;object-fit:cover;transition:transform .8s cubic-bezier(.2,.7,.2,1)}
 .ep-inline-spot__photo:hover img{transform:scale(1.03)}
 .ep-inline-spot__info a{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:20px;align-items:end;
@@ -2040,11 +2064,40 @@ html[lang="zh-TW" i]{
   .bm-no{display:block;font-family:var(--serif);font-size:11px;line-height:1;color:#fff;font-variant-numeric:lining-nums}
   .bm-river{font-size:10px}
   .bm-note{display:none}
-  .bm-legend{display:block;list-style:none;margin:18px 0 0;padding:0;border-top:1px solid var(--line)}
-  .bm-legend a{display:flex;align-items:baseline;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
-  .bm-legend .bm-iname{flex:1;font-size:17px}
-  .bm-lno{flex:none;width:20px;height:20px;border-radius:50%;background:var(--gold);color:#fff;font-family:var(--serif);font-size:11px;line-height:20px;text-align:center;transform:translateY(-2px)}
-  .bm-legend .is-top .bm-lno{background:var(--indigo)}
+  .bm-legend{display:block;margin:18px 0 0}
+}
+/* 一覧の形。出すのは、スマホ（上）と、地名を地図に置かない言語（下）だけ（どちらでもないときは display:none のまま） */
+.bm-legend{list-style:none;padding:0;border-top:1px solid var(--line)}
+.bm-legend a{display:flex;align-items:baseline;gap:12px;padding:12px 0;border-bottom:1px solid var(--line)}
+.bm-legend .bm-iname{flex:1;font-size:17px}
+.bm-lno{flex:none;width:20px;height:20px;border-radius:50%;background:var(--gold);color:#fff;font-family:var(--serif);font-size:11px;line-height:20px;text-align:center;transform:translateY(-2px)}
+.bm-legend .is-top .bm-lno{background:var(--indigo)}
+/* 英語・スペイン語・韓国語は、どの幅でも地図の上を番号だけにして、地名は下の番号つきの一覧で読ませる（2026-10-08 手直し）。
+   地名の置き場所（地域プロファイルの browse_map）は日本語の長さで決めてあり、訳は3〜4倍の長さになる
+   （「東福寺・伏見稲荷大社周辺」→「Tofuku-ji Temple and Fushimi Inari Taisha Shrine Area」）。点の横に1行で置くと、
+   隣の地名に重なり（英語スマホで 104×11px）、地図の枠の左右で切れていた（スペイン語PCは左に222px）。
+   折り返しても、スマホの幅315pxの地図に11個は入らない。訳の長さが変わっても崩れないよう、置き場所の調整には頼らない。
+   地名は消さずに見えなくする（リンクの名前は読み上げに残す）。日本語・中国語は地名を点の横に出したまま */
+:is(:lang(en),:lang(es),:lang(ko)) .bm .bm-area{gap:0;transform:translate(-50%,-50%)}
+/* 番号だけの地図は、列が狭い幅（タブレット）でも横にずらさず、列の幅に縮める（縮めて読めなくなる地名が無い） */
+:is(:lang(en),:lang(es),:lang(ko)) .bm .bm-scroll{overflow:visible}
+:is(:lang(en),:lang(es),:lang(ko)) .bm .bm-map{max-width:100%;height:auto !important}
+:is(:lang(en),:lang(es),:lang(ko)) .bm .bm-label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+:is(:lang(en),:lang(es),:lang(ko)) .bm .bm-dot{width:var(--dd);height:var(--dd);display:grid;place-items:center}
+:is(:lang(en),:lang(es),:lang(ko)) .bm .bm-no{display:block;font-family:var(--serif);font-size:11px;line-height:1;color:#fff;font-variant-numeric:lining-nums}
+/* 「数字は載っている場所の数」は、点の横に件数を出すときの注記。点の中の数字が番号になるこの形では出さない（件数は一覧にある） */
+:is(:lang(en),:lang(es),:lang(ko)) .bm .bm-note{display:none}
+:is(:lang(en),:lang(es),:lang(ko)) .bm .bm-legend{display:block;margin:18px 0 0}
+/* 欧文の川の名前（「Kamo River」）は語ごとに折って2行にする。地図を縮めた幅（スマホ・タブレット）で、1行のままだと隣の点（銀閣寺周辺）の下に潜る */
+:is(:lang(en),:lang(es)) .bm .bm-river{white-space:normal;width:min-content;line-height:1.25}
+@media(min-width:761px){
+  /* PCの点は、番号が入る大きさ（22px）より小さくしない。一覧は地図の下に2列（番号は左の列を下まで読んでから右の列へ）。1行は列をまたがせない。
+     罫は1行ごとに上下に引いて1px重ねる（どこで列が変わっても、列の頭と末尾に罫が来る。何行目で変わるかは名前の長さで決まる） */
+  :is(:lang(en),:lang(es),:lang(ko)) .bm .bm-area{--dd:max(22px,var(--d))}
+  :is(:lang(en),:lang(es),:lang(ko)) .bm .bm-no{font-size:12px}
+  :is(:lang(en),:lang(es),:lang(ko)) .bm .bm-legend{columns:2;column-gap:44px;margin-top:26px;border-top:0}
+  :is(:lang(en),:lang(es),:lang(ko)) .bm .bm-legend li{break-inside:avoid}
+  :is(:lang(en),:lang(es),:lang(ko)) .bm .bm-legend a{border-top:1px solid var(--line);margin-top:-1px}
 }
 
 /* --- おすすめの場所（案C 右にはみ出す写真の帯） --- */
