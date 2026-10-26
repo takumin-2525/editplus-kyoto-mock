@@ -637,7 +637,9 @@
 	// 写真が切り替わる間隔。管理画面で選んだ秒数（inc/hero-media.php が data-hold に書く）。無い・数字でないときは既定の3秒。
 	// 選んだ秒数は「切り替わりから次の切り替わりまで」なので、重なる動き（ENTER）のぶんを引いて待つ
 	// （引かないと「4秒」を選んで 4.8秒ごとになる）
-	var ENTER = 800;   // 次の写真が重なりきるまで（style.css の ep-hero-enter と同じ）
+	// 次の写真が重なりきるまで。管理画面で選んだ長さ（inc/hero-media.php が data-fade に秒で書く。無ければ 0.8秒 ＝ style.css の --hero-fade の既定）
+	var fadeSec = parseFloat(ctl.getAttribute('data-fade'));
+	var ENTER = (fadeSec > 0 ? fadeSec : 0.8) * 1000;
 	var holdSec = parseFloat(ctl.getAttribute('data-hold'));
 	var HOLD = Math.max(1000, (holdSec > 0 ? holdSec : 3) * 1000 - ENTER);   // 1枚が止まって見える時間
 	var btn = ctl.querySelector('.hero-pause');
@@ -705,14 +707,14 @@
 	var index = null;
 	var loading = null;
 
-	// サーバーの editplus_find_normalize() と同じそろえ方（全角半角・大文字小文字・ひらがな→カタカナ・空白と中黒を消す）
+	// サーバーの editplus_find_normalize() と同じそろえ方（全角半角・大文字小文字・ひらがな→カタカナ・空白と中黒を消す・曲がった引用符をまっすぐに）
 	function norm(s) {
 		s = String(s || '');
 		if (s.normalize) { s = s.normalize('NFKC'); }
 		s = s.toLowerCase().replace(/[ぁ-ゖ]/g, function (c) {
 			return String.fromCharCode(c.charCodeAt(0) + 0x60);
 		});
-		return s.replace(/[ヶ]/g, 'ケ').replace(/[ヵ]/g, 'カ').replace(/[\s・･]/g, '');
+		return s.replace(/[ヶ]/g, 'ケ').replace(/[ヵ]/g, 'カ').replace(/[\s・･]/g, '').replace(/[‘’]/g, "'");
 	}
 
 	function load(url) {
@@ -841,5 +843,45 @@
 			if (e.target !== input && !list.contains(e.target)) { close(); }
 		});
 		input.form && input.form.addEventListener('submit', close);
+	});
+})();
+
+/* 絞り込みの欄（form.filters[data-filters]。functions.php の editplus_render_filters）
+ * ・送るとき、「すべて」（値が空）の欄は送らない。以前は ?area=0&genre=0 が URL に残り、共有した URL が読みにくかった（2026-10-26）
+ * ・戻る・進むで来たとき、選択欄をこのページの条件（サーバーが selected を付けた選択肢）に合わせ直す。
+ *   ブラウザは離れたときの選択欄をそのまま戻すので、一覧は前の条件なのに、選択欄だけ次に選んだ条件のままだった */
+(function () {
+	'use strict';
+	var forms = document.querySelectorAll('form[data-filters]');
+	if (!forms.length) { return; }
+	Array.prototype.forEach.call(forms, function (form) {
+		form.addEventListener('submit', function (e) {
+			var left = 0;
+			Array.prototype.forEach.call(form.elements, function (el) {
+				if (!el.name || el.disabled) { return; }
+				if (el.tagName === 'SELECT' && (el.value === '' || el.value === '0')) {
+					el.disabled = true; // disabled の欄は送られない（下の pageshow で戻す）
+				} else if (el.type !== 'submit') {
+					left++;
+				}
+			});
+			// 送る欄が1つも無いときは、「?」だけの付いた URL にしない
+			if (!left) {
+				e.preventDefault();
+				window.location.href = form.action;
+			}
+		});
+	});
+	window.addEventListener('pageshow', function () {
+		Array.prototype.forEach.call(forms, function (form) {
+			Array.prototype.forEach.call(form.querySelectorAll('select'), function (sel) {
+				sel.disabled = false;
+				var at = 0;
+				for (var i = 0; i < sel.options.length; i++) {
+					if (sel.options[i].defaultSelected) { at = i; break; }
+				}
+				sel.selectedIndex = at;
+			});
+		});
 	});
 })();

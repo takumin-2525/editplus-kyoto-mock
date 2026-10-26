@@ -3,7 +3,7 @@ Theme Name: EditPlus Kyoto Concierge
 Theme URI: https://github.com/takumin-2525/editplus-web-renewal
 Author: 高速オフセット / 株式会社エディットプラス
 Description: 京都・大阪観光コンシェルジュ リニューアル用の自作テーマ。60_デザイン/kyoto-concierge-rough.html のデザインを再現。
-Version: 0.9.98
+Version: 0.10.0
 Requires at least: 6.0
 Requires PHP: 8.0
 Text Domain: editplus-kyoto
@@ -76,6 +76,14 @@ html[lang^="en"],html[lang^="es"]{
 *{box-sizing:border-box}
 /* 文字の太さは 500（2026-10-26）。ゴシックの 400 は白い地の上で細く、灰の文字ほど薄く見えた（野口「文字薄くない？」） */
 body{margin:0;background:var(--washi);color:var(--sumi);font-family:var(--gothic);font-weight:500;line-height:1.7;-webkit-font-smoothing:antialiased}
+/* 中身の短いページ（/topics/ の PC など）で、フッターの下に地の色の帯が残っていた（2026-10-26）。body を画面の高さまで伸ばす縦の並びにして、
+   フッターを下端に押し付ける（空きはメインとフッターのあいだに回る）。body の直下はどれも block（固定のヘッダー・メニューは並びの外）なので、
+   中身が画面より長いページの見え方は変わらない。svh は「アドレスバーが出ているときの高さ」で、短いページが余計にスクロールしない。
+   画面だけに掛ける（紙・PDFの行程表は body の末尾に組むので、印刷のページ送りは今までどおり block の並びで）*/
+@media screen{
+  body{display:flex;flex-direction:column;min-height:100vh;min-height:100svh}
+  body>.site-footer{margin-top:auto}
+}
 /* 横方向のはみ出しはページを横スクロールさせない（スマホで「横にスライドできてしまう」のを構造的に止める）。
    clip はスクロール領域を作らないので、position:sticky 等に影響しない。はみ出し自体は各所で直す前提の最後の砦 */
 html,body{overflow-x:clip} /* iOSのSafariは html だけだと横に動くことがあるので body にも */
@@ -201,7 +209,8 @@ nav.main a:hover{opacity:.7}
    次の写真は8%大きい状態から縮みながら、前の写真の上に重なって出る。前の写真を先に消さないので、途中で画面が暗く沈まない */
 .hero .bg .hero-slide{opacity:0}
 .hero .bg .hero-slide.is-on{opacity:1;z-index:1}
-.hero .bg .hero-slide.is-enter{z-index:2;animation:ep-hero-enter .8s ease-in-out both}
+/* 重なって切り替わる長さは管理画面で選べる（--hero-fade。inc/hero-media.php が section に置く。既定 0.8秒） */
+.hero .bg .hero-slide.is-enter{z-index:2;animation:ep-hero-enter var(--hero-fade,.8s) ease-in-out both}
 @keyframes ep-hero-enter{from{opacity:0;transform:scale(1.08)}to{opacity:1;transform:scale(1)}}
 @media (prefers-reduced-motion:reduce){.hero .bg .hero-slide.is-enter{animation:none}}
 /* 写真の入れ替えを止めるボタン。画面には見せず、キーボードで選んだときだけ右下に出す（2026-10-07「切り替えのUIいらない」。
@@ -1650,9 +1659,10 @@ body.error404 .page-main{flex:1 0 auto}
      PCと同じ切り取り（10/6）はスマホでは外れる。どこを残すかは管理画面の「切り取る位置」。同梱の3枚は真ん中で切って、池・山・舟が残ることを確かめた。
      高さは min-height（文字の長い言語で中身が画面より高くなれば枠が伸びる）。560px は横向きなど低い画面での下限 */
   .hero{aspect-ratio:auto;min-height:max(560px,100vh);min-height:max(560px,100svh)}
+  /* 下からの影の濃さも「写真の暗さ」に比例させる（既定 .48 のとき .9／.55 ＝ 今までと同じ） */
   .hero .scrim{background:
       linear-gradient(180deg,rgba(9,12,20,.5) 0%,rgba(9,12,20,0) 25%),
-      linear-gradient(0deg,rgba(7,10,18,.9) 0%,rgba(7,10,18,.55) 35%,rgba(7,10,18,0) 62%)}
+      linear-gradient(0deg,rgba(7,10,18,calc(var(--hero-shade,.48) * 1.875)) 0%,rgba(7,10,18,calc(var(--hero-shade,.48) * 1.146)) 35%,rgba(7,10,18,0) 62%)}
   .hero .inner{padding:0 0 calc(92px + env(safe-area-inset-bottom))}
   /* 下にまだ続くことを示す細い線（文字は置かない） */
   .hero::after{content:"";position:absolute;z-index:2;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));width:1px;height:40px;background:rgba(255,255,255,.6)}
@@ -1766,6 +1776,9 @@ body.error404 .page-main{flex:1 0 auto}
 .ep-slider__btn{width:38px;height:38px;padding:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);background:none;color:var(--sumi-soft);cursor:pointer;transition:background-color .3s,border-color .3s,color .3s}
 .ep-slider__btn:hover:not(:disabled,[aria-disabled="true"]){background:var(--indigo);border-color:var(--indigo);color:#fff}
 .ep-slider__btn svg{display:block}
+/* 入りきるときは app.js が hidden を付ける。上の display:flex が hidden を打ち消し、PCのバナー欄に押しても動かない ‹ › がバナーの端に重なっていた（2026-10-26）。
+   「何枚目か」（.ep-slider__count）も display:flex なので同じ */
+.ep-slider__btn[hidden],.ep-slider__count[hidden]{display:none}
 /* 押せない状態なので薄いままでよい（無効な部品はコントラストの基準の対象外）。
    ここはバナーの写真の上にも重なり地が固定でないので、濃くしても読みやすくなるとは限らない */
 /* 端のボタンは disabled ではなく aria-disabled（app.js。フォーカスを落とさないため。2026-10-03） */
@@ -2153,6 +2166,10 @@ body.is-book-full{overflow:hidden}
 @supports (word-break:auto-phrase){
   :lang(ja) .infotable td,:lang(ja) .spot .cat{word-break:auto-phrase}
 }
+/* 住所は文節で折らない。Chrome の文節は住所を知らず「京都市中／京区」「四条下／ル船頭町」と折っていた（2026-10-26）。
+   語の途中では折らず、editplus_address_html() が置いた <wbr>（府県・市・区・通り・上ル下ル のうしろ）と空白でだけ折る。
+   入りきらない長い区切りは上の overflow-wrap:anywhere が折る。auto-phrase の無いブラウザでも同じ折り方にそろう */
+.infotable td.ep-addr,:lang(ja) .infotable td.ep-addr{word-break:keep-all}
 /* スマホの基本情報の表: 英語・スペイン語・韓国語は見出しが長く（「Estación más cercana」は約200px）、値の列が58pxまで
    狭まって住所が17行に折れていた。見出しを値の上に置き、値に全幅を使う（日本語・中国語は見出しが短いので表のまま） */
 @media(max-width:600px){
@@ -2222,7 +2239,8 @@ html[lang="zh-TW" i]{
   .hero--center .inner{text-align:center;padding:74px 0 max(0px,calc(100vw / (var(--hero-ratio)) - 100svh))}
   /* 文字が真ん中に来るので、下からの影ではなく写真全体を一段沈める。上の影はヘッダーの文字のため。
      全体の幕は .32 では渡月橋の河原や空など明るい写真で白い文字が沈まなかったので、.48 まで濃くした（2026-10-07 社内指示） */
-  .hero--center .scrim{background:linear-gradient(180deg,rgba(9,12,20,.45) 0%,rgba(9,12,20,0) 22%),linear-gradient(rgba(10,12,18,.48),rgba(10,12,18,.48))}
+  /* 全体の幕の濃さは管理画面の「写真の暗さ」（--hero-shade。既定 .48）。上の影はヘッダーの文字のためなので動かさない */
+  .hero--center .scrim{background:linear-gradient(180deg,rgba(9,12,20,.45) 0%,rgba(9,12,20,0) 22%),linear-gradient(rgba(10,12,18,var(--hero-shade,.48)),rgba(10,12,18,var(--hero-shade,.48)))}
 }
 .hero--center .inner{text-align:center}
 .hero--center .hsub{margin-left:auto;margin-right:auto}

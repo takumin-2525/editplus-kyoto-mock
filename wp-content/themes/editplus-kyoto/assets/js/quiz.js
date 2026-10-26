@@ -681,7 +681,7 @@ function mount(el, options) {
 		}).then(function (r) {
 			if (!r.ok || !r.json || !r.json.url) {
 				// サーバーの文言は日本語なので、そのまま出さずに合図（code）で訳を選ぶ
-				throw new Error(r.json && r.json.code === 'plan_expired'
+				throw shareError(r.json && r.json.code === 'plan_expired'
 					? t('shareExpired', 'コースを作ってから時間が経ったため、リンクを作れません。もう一度コースを作ってください。')
 					: t('shareFail', '共有用のリンクを作れませんでした。時間をおいてお試しください。'));
 			}
@@ -694,9 +694,19 @@ function mount(el, options) {
 			return data.share_url;
 		}).catch(function (err) {
 			delete data._saving;
-			throw err;
+			// 通信そのものが失敗した（電波が切れた・サーバーが落ちている）ときや、返事が JSON でなかったときの err.message は、
+			// ブラウザの英語の文（「Failed to fetch」「Unexpected token <」）。画面には出さず、訳した文に置き換える
+			// （診断の送信の失敗と同じ扱い。2026-10-26 検証サーバーの点検で「Failed to fetch」がそのまま出ていた）
+			throw (err && err.shown) ? err : shareError(t('shareFail', '共有用のリンクを作れませんでした。時間をおいてお試しください。'));
 		});
 		return data._saving;
+	}
+
+	/** 画面にそのまま出してよい（訳した）文を持つエラー。persist() の catch で、ブラウザの文と見分ける */
+	function shareError(text) {
+		var err = new Error(text);
+		err.shown = true;
+		return err;
 	}
 
 	/*
@@ -1604,7 +1614,9 @@ function mount(el, options) {
 	 * 形は CSS が決める（600px 以下だけ、カードを横にすべらせる・流れの表・下に固定するボタンを出す）。
 	 * ここは押したときの動きだけ。PC では流れの表もボタンも見えないので、何も起きない
 	 */
+	var phoneSync = null; // カードの列の「何枚目か」を測り直す（bindPhone が作り、一覧を開いたとき bindStory が呼ぶ）
 	function bindPhone() {
+		phoneSync = null;
 		var grid = el.querySelector('.rs-grid');
 		var count = el.querySelector('.rs-count');
 		if (!grid) { return; }
@@ -1612,13 +1624,21 @@ function mount(el, options) {
 		var sliding = function () { return grid.scrollWidth > grid.clientWidth + 4; };
 		// 1枚ぶんの送り幅（カードの幅＋間）。2枚目の位置から測る（間は CSS が持っている）
 		var pitch = function () { return cards.length > 1 ? cards[1].offsetLeft - cards[0].offsetLeft : grid.clientWidth; };
-		var current = function () { return Math.max(0, Math.min(cards.length - 1, Math.round(grid.scrollLeft / pitch()))); };
+		var current = function () {
+			var p = pitch();
+			// 一覧（.st-list）が隠れているあいだはカードの幅が0で、0÷0 になる（「行き先 NaN / 4」と出ていた）。測れないときは1枚目
+			if (!(p > 0)) { return 0; }
+			return Math.max(0, Math.min(cards.length - 1, Math.round(grid.scrollLeft / p)));
+		};
 		var go = function (i) {
 			i = Math.max(0, Math.min(cards.length - 1, i));
 			grid.scrollTo({ left: i * pitch(), behavior: 'smooth' });
 		};
 		var shown = -1;
 		var sync = function () {
+			// 隠れているあいだは何もしない。数字と ← → は、一覧を開いたとき（phoneSync）に合わせる。
+			// 以前はここで NaN を数字に書き、1枚目なのに「←」が押せた（NaN === 0 が偽になるため）。2026-10-26 検証サーバーの点検
+			if (!grid.clientWidth) { shown = -1; return; }
 			var i = current();
 			if (i === shown) { return; }
 			shown = i;
@@ -1630,6 +1650,7 @@ function mount(el, options) {
 		};
 		grid.addEventListener('scroll', function () { window.requestAnimationFrame(sync); }, { passive: true });
 		sync();
+		phoneSync = function () { shown = -1; sync(); };
 		var prevBtn = el.querySelector('.rs-prev');
 		var nextBtn = el.querySelector('.rs-next');
 		if (prevBtn) { prevBtn.addEventListener('click', function () { go(current() - 1); }); }
@@ -1939,6 +1960,8 @@ function mount(el, options) {
 				list.hidden = !open;
 				tg.setAttribute('aria-expanded', open ? 'true' : 'false');
 				tg.textContent = open ? t('storyListClose', '一覧を閉じる') : t('storyList', '一覧で見る');
+				// 隠れていたあいだは列の幅が測れなかったので、開いたいま「何枚目か」と ← → を合わせ直す（→ bindPhone）
+				if (open && phoneSync) { phoneSync(); }
 				if (open) { reveal(list, true); }
 			});
 		}

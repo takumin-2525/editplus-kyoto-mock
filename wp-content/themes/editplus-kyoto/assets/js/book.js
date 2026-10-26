@@ -223,8 +223,9 @@
 		var h = '#p=' + ps[0];
 		if (window.location.hash !== h) { history.replaceState(null, '', h); }
 		// 言語の切り替え先にも、いま読んでいるページを付ける。切り替え先のURLはサーバーが作るので #p= を知らず、
-		// 英語に変えると1ページ目に戻っていた（BUGS #37。nearby.js が ?hotel= を書き換えるのと同じ手）
-		Array.prototype.forEach.call(document.querySelectorAll('#langMenu a[href], #langSheet a[href]'), function (a) {
+		// 英語に変えると1ページ目に戻っていた（BUGS #37。nearby.js が ?hotel= を書き換えるのと同じ手）。
+		// フッターの言語の並び（.flangs）も同じ切り替えなので、そろえて付ける（2026-10-26）
+		Array.prototype.forEach.call(document.querySelectorAll('#langMenu a[href], #langSheet a[href], .flangs a[href]'), function (a) {
 			a.setAttribute('href', a.getAttribute('href').split('#')[0] + h);
 		});
 		book.classList.toggle('no-left', !exists(sideIndex('left', current)));
