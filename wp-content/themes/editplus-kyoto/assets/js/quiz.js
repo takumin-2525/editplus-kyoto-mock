@@ -89,6 +89,10 @@
 	};
 	// アイコンと続く語を1つに結ぶ（折り返したときに、アイコンだけが行末に残らない）
 	var withIcon = function (svg, html) { return svg ? '<span class="ep-nb">' + svg + html + '</span>' : html; };
+	// 丸いボタンの中の矢印・×。届かなかったときは文字で出す（形の正は inc/icons.php。文字は書体で字面の位置がずれる）
+	var arrow = function (name, alt) { return icon(name) || alt; };
+	// 結果の「一覧」の id に付ける通し番号（1ページに診断が2つあっても、aria-controls が別の一覧を指さない）
+	var storySeq = 0;
 
 	// サーバーのエラー文は日本語なので、そのまま出さずに合図（code）で訳を選ぶ。
 	// ここに無い合図のときの扱いは、すぐ下の errorText
@@ -280,6 +284,9 @@ function mount(el, options) {
 	// （nearby.js の「出発点を選ぶ前に戻す」は起動し直さずに中身だけ空にする）
 	var token = {};
 	el._epQuizMount = token;
+	// 前の起動が body に置いた全画面（C案）を片付ける。/nearby/ は同じ要素で起動し直す
+	if (el._epStory && el._epStory.parentNode) { el._epStory.parentNode.removeChild(el._epStory); }
+	el._epStory = null;
 	function alive() { return el._epQuizMount === token && !!el.firstChild; }
 
 	/*
@@ -526,6 +533,7 @@ function mount(el, options) {
 	var PAPER_PH = { w: 44, h: 29.33 };
 	var paperPhotos = {};   // スポットのID → img（読み込み中のものも入る。使うのは読み終えたものだけ → paperPhoto）
 	var photosAsked = null; // 写真の一覧を取りに行っている最中だけ、その Promise
+	var storyPhotos = {};   // スポットのID → { src, big, w, h }（C案の表紙・札・1か所ずつの画面 → placeStoryPhotos）
 	// 枠いっぱいに敷いたときの細かさ（dpi）。足りないほうの辺で決まる
 	function paperDpi(w, h) {
 		return Math.min(w * 25.4 / PAPER_PH.w, h * 25.4 / PAPER_PH.h);
@@ -607,6 +615,10 @@ function mount(el, options) {
 				keepForPaper(p.id, m); // 紙・PDF用にも読んでおく（画面のカードには触らない）
 				var sizes = (m.media_details && m.media_details.sizes) || {};
 				var src = (sizes.medium_large || sizes.large || sizes.medium || m).source_url;
+				// 表紙と1か所ずつの画面は画面いっぱいに敷くので、一段大きい写真を使う（large が無い写真は元の大きさ。多くは幅700px前後）
+				var big = (sizes.large || m).source_url;
+				var md = m.media_details || {};
+				storyPhotos[p.id] = { src: src, big: big, w: parseInt(md.width, 10) || 0, h: parseInt(md.height, 10) || 0 };
 				var card = el.querySelector('.spot[data-spot="' + p.id + '"]');
 				if (!card) { return; }
 				// 写真が載ったら見出しを見せ、フォーカス先も見出しのリンクに移す（写真のリンクは同じ行き先の重複）
@@ -622,6 +634,8 @@ function mount(el, options) {
 					h.querySelector('a').removeAttribute('tabindex');
 				}
 			});
+			// 表紙・6か所の札・1か所ずつの画面。どれも枠の大きさが決まっているので、載せても高さは変わらない
+			placeStoryPhotos();
 			// 覚えた要素が画面の中にあったときだけ戻す。結果より上を見ているとき（覚えた要素が画面の下の外）は、伸びるのも画面の外
 			if (mark && markTop < window.innerHeight) {
 				var moved = mark.getBoundingClientRect().top - markTop;
@@ -1292,14 +1306,15 @@ function mount(el, options) {
 				sumIcons = icon('walk');
 			}
 			stats.push('<span class="res-sum">' + withIcon(sumIcons, esc(summary)) + '</span>');
-			if (plan.travel_min) stats.push('<span>' + esc(fmt(t('travelTotal', '移動は計%d分'), plan.travel_min)) + '</span>');
+			// res-minor はスマホの表紙では出さない（写真の見える所が無くなる。時刻の幅と行き先の数から読める）
+			if (plan.travel_min) stats.push('<span class="res-minor">' + esc(fmt(t('travelTotal', '移動は計%d分'), plan.travel_min)) + '</span>');
 		} else if (plan.transport_label) {
 			// 乗る区間の数を持たない古いコース。選んだ手段の名前を（訳せるものは訳して）そのまま出す
 			var chosen = modeCode(plan.transport, plan.transport_label);
 			stats.push('<span class="res-sum">' + withIcon(modeIcon(chosen, ''), esc(chosen ? modeLabel(chosen) : plan.transport_label)) + '</span>');
 		}
 		if (plan.begin) stats.push('<span>' + esc(plan.begin) + range + esc(plan.end) + '</span>');
-		if (plan.total_min) stats.push('<span>' + esc(roughHours(plan.total_min)) + '</span>');
+		if (plan.total_min) stats.push('<span class="res-minor">' + esc(roughHours(plan.total_min)) + '</span>');
 		stats.push('<span>' + esc(fmt(t('spotCount', '%dスポット'), spots.length)) + '</span>');
 
 		// 下のボタン。徒歩・車は全体をひと続きのルートで開く。
@@ -1399,27 +1414,167 @@ function mount(el, options) {
 		// スマホではコース名と紹介文のあいだに浮いて見えたので、共有の欄の下に1行で置く（PCはコース名の横のまま）
 		var againEnd = '<p class="r-again">' + again.replace('class="r-reset"', 'class="r-reset r-reset--end"') + '</p>';
 
-		el.classList.remove('is-busy');
-		el.classList.add('is-result');
-		el.innerHTML = '<div class="q-res">'
-			+ (T.siteName ? '<p class="res-print-site">' + esc(T.siteName) + '</p>' : '')
-			+ '<div class="res-head">'
-			+ '<div class="res-h"><h3 class="res-title"' + jaAttr(data.title) + '>' + esc(data.title) + '</h3>'
-			+ again + '</div>'
+		/*
+		 * C案 ストーリーズ（2026-10-20 → 60_デザイン/2026-10-16_プラン結果画面の案.md §3・§7）。
+		 * ページの中には「表紙」と「この日の◯か所」だけを置き、1か所ずつの画面は押したときに全画面で重ねる。
+		 * 全画面でめくる形をページに埋め込むと、左右の指の動きが縦のスクロールとぶつかるため。
+		 * 今までのカードの列（行程）は「一覧で見る」の中に残す ―― 時刻と移動のつながりを1枚で確かめたい人と、
+		 * 読み上げで順に読む人のため。紙・PDF（printSheet）はこれとは別に組むので変わらない
+		 */
+		var listId = 'epStList' + (++storySeq);
+		var tiles = spots.map(function (s, i) {
+			// 札の下に「〜出る時刻・滞在」と「次へは何で何分」。滞在と移動のつながりは、1か所ずつの画面を
+			// 開かないと分からなかった（2026-10-24 → 60_デザイン/2026-10-16_プラン結果画面の案.md §11）
+			var stay = [];
+			if (s.leave) { stay.push(range + esc(s.leave)); }
+			if (s.stay_min) { stay.push(esc(fmt(t('stayMin', '滞在%d分'), s.stay_min))); }
+			var nx = spots[i + 1];
+			var toNext = '';
+			if (nx && nx.travel_min) {
+				var nxMode = modeCode(nx.leg_mode, nx.travel_by);
+				toNext = withIcon(modeIcon(nxMode, nx.leg_kind), esc(nxMode ? modeLabel(nxMode) : (nx.travel_by || t('travel', '移動'))) + gap + esc(fmt(t('minutes', '%d分'), nx.travel_min)));
+			}
+			return '<li><button type="button" class="st-tile" data-go="' + i + '" data-spot="' + (s.id ? parseInt(s.id, 10) : '') + '">'
+				// 写真が載るまでは、カードと同じ「名前の面」で受ける（写真の無いスポットはこのまま）
+				+ '<span class="st-tile-ph"><span class="st-noimg"' + jaAttr(s.title) + '>' + nameHtml(s.title) + '</span></span>'
+				+ '<span class="st-tile-cap">' + (s.arrive ? '<span class="st-tile-t">' + esc(s.arrive) + '</span>' : '')
+				+ '<span class="st-tile-n"' + jaAttr(s.title) + '>' + esc(s.title) + '</span></span>'
+				+ '</button>'
+				+ (stay.length ? '<p class="st-tile-stay">' + stay.join(dot) + '</p>' : '')
+				+ (toNext ? '<p class="st-tile-leg">' + toNext + '</p>' : '')
+				+ '</li>';
+		}).join('');
+		// 表紙の写真は後から載せる（loadPhotos → coverPhoto）。載るまで・載らないときは、文字だけの表紙。
+		// 文字は「題と紹介」と「要点と始める」に分けて包む。PC はこの2つを左右に並べる（style.css）
+		var cover = '<div class="st-cover res-head">'
+			+ '<div class="st-bg" aria-hidden="true"></div>'
+			+ '<div class="st-cv">'
+			+ '<div class="st-cv-main">'
+			+ '<p class="st-kicker">' + esc(badge) + '</p>'
+			+ '<h3 class="res-title"' + jaAttr(data.title) + '>' + esc(data.title) + '</h3>'
 			+ (data.description ? '<p class="res-desc"' + jaAttr(data.description) + '>' + esc(data.description) + '</p>' : '')
-			+ '<div class="res-stats">' + stats.join('') + '<span class="res-badge">' + badge + '</span></div>'
-			+ '</div>'
-			+ flow
-			+ '<ol class="rs-grid">' + steps + '</ol>'
+			+ '</div><div class="st-cv-go">'
+			+ '<div class="res-stats">' + stats.join('') + '</div>'
+			+ (spots.length ? '<button type="button" class="st-start" data-go="0">' + esc(t('storyStart', '旅をはじめる')) + arrow('next', '') + '</button>' : '')
+			+ '<button type="button" class="st-list-tg" aria-expanded="false" aria-controls="' + listId + '">' + esc(t('storyList', '一覧で見る')) + '</button>'
+			+ '</div></div></div>';
+		var six = '<div class="st-six">'
+			+ '<h4 class="st-six-ttl">' + esc(fmt(t('storySix', 'この日の%dか所'), spots.length)) + '</h4>'
+			+ '<ol class="st-tiles">' + tiles + '</ol>'
 			+ '<div class="r-foot">' + route + chips + '</div>'
 			+ routeHint + flagNote
 			+ '<p class="res-note">' + esc(t('timeNote', '時刻は移動時間からの目安です。営業時間・定休日は各スポットのページと公式情報でご確認ください。')) + '</p>'
 			+ keep
 			+ againEnd
+			+ '</div>';
+
+		// 1か所ずつの画面（全画面で重ねる）。中身は今ここで組み、開くまでは隠しておく
+		var pages = spots.map(function (s, i) {
+			var mode = modeCode(s.leg_mode, s.travel_by);
+			var by = mode ? modeLabel(mode) : (s.travel_by || t('travel', '移動'));
+			var legText = s.travel_min
+				? withIcon(modeIcon(mode, s.leg_kind), esc(by) + gap + esc(fmt(t('minutes', '%d分'), s.travel_min)))
+				: '';
+			var sub = [];
+			if (s.leave) { sub.push(range + esc(s.leave)); }
+			if (s.stay_min) { sub.push(esc(fmt(t('stayMin', '滞在%d分'), s.stay_min))); }
+			var when = s.arrive
+				? '<p class="st-p-when"><b>' + esc(s.arrive) + '</b>' + (sub.length ? '<small>' + sub.join(dot) + '</small>' : '') + '</p>'
+				: '';
+			var cat = [s.area, s.cat].filter(Boolean).map(esc).join(esc(t('catSep', '｜')));
+			// 営業時間・定休日・最寄り駅は、見出しと中身の行に分ける。丸い札に入れていたときは、長い営業時間
+			// （誌面の原文で最長203字。特別公開の回ごとの時刻など）で札が4行の楕円にふくらみ、見出しと中身の境も見えなかった（10/20）。
+			// 長い中身は3行で畳み、開くボタンは showPage が測ってから付ける（隠れているあいだは高さを測れない）
+			var fact = function (ico, label, v) {
+				return '<div class="st-info"><dt><span class="st-info-ic" aria-hidden="true">' + icon(ico) + '</span>'
+					+ '<span class="st-info-k">' + esc(label) + '</span></dt>'
+					+ '<dd><span class="st-info-v"' + jaAttr(v) + '>' + esc(v) + '</span></dd></div>';
+			};
+			var facts = [];
+			if (s.hours) { facts.push(fact('clock', t('hoursLabel', '営業時間'), s.hours)); }
+			if (s.holiday) { facts.push(fact('calendar', t('holidayLabel', '定休日'), s.holiday)); }
+			if (s.station) { facts.push(fact('train', t('stationLabel', '最寄り駅'), s.station)); }
+			// ここまでの行き方（ひとつ前の場所から）。カードの下のリンクと同じURL
+			var legUrl = mode ? httpUrl(s.leg_url) : '';
+			var pinUrl = httpUrl(s.map_url);
+			var how = '';
+			if (legUrl || legText) {
+				var from = (i === 0 && origin) ? '<span class="rs-from">' + withOrigin(t('legFrom', '%sから')) + '</span>' : '';
+				how = '<p class="st-p-how"><span class="st-p-how-t">' + from + legText + '</span>'
+					+ (legUrl ? '<a href="' + esc(legUrl) + '" target="_blank" rel="noopener">' + withIcon(icon('pin'), esc(t(MODES[mode].link[0], MODES[mode].link[1]))) + '</a>' : '')
+					+ '</p>';
+			} else if (pinUrl) {
+				how = '<p class="st-p-how"><a href="' + esc(pinUrl) + '" target="_blank" rel="noopener">' + withIcon(icon('pin'), esc(t('viewMap', '地図で見る'))) + '</a></p>';
+			}
+			var spotUrl = httpUrl(s.url);
+			var name = spotUrl
+				? '<a href="' + esc(spotUrl) + '">' + nameHtml(s.title) + '<span class="st-p-name-go">' + arrow('next', '›') + '</span></a>'
+				: nameHtml(s.title);
+			// 下の札は「次はどこへ・何で何分」。最後の1枚は、6か所の一覧（ふりかえり）へ戻る
+			var next = spots[i + 1];
+			var foot;
+			if (next) {
+				var nMode = modeCode(next.leg_mode, next.travel_by);
+				var nBy = nMode ? modeLabel(nMode) : (next.travel_by || t('travel', '移動'));
+				var nLeg = [];
+				if (next.travel_min) { nLeg.push(withIcon(modeIcon(nMode, next.leg_kind), esc(nBy) + gap + esc(fmt(t('minutes', '%d分'), next.travel_min)))); }
+				if (next.arrive) { nLeg.push(esc(fmt(t('storyArrive', '%s着'), next.arrive))); }
+				foot = '<button type="button" class="st-p-next" data-go="' + (i + 1) + '">'
+					+ '<span class="st-p-next-ph" data-spot="' + (next.id ? parseInt(next.id, 10) : '') + '" aria-hidden="true"></span>'
+					+ '<span class="st-p-next-in"><span class="st-p-next-k">' + esc(t('storyNextLabel', '次は')) + (nLeg.length ? ' ' + nLeg.join(dot) : '') + '</span>'
+					+ '<span class="st-p-next-n"' + jaAttr(next.title) + '>' + esc(next.title) + '</span></span>'
+					+ '<span class="st-p-next-go" aria-hidden="true">' + arrow('next', '›') + '</span></button>';
+			} else {
+				foot = '<button type="button" class="st-p-next st-p-end" data-end>'
+					+ '<span class="st-p-next-in"><span class="st-p-next-n">' + esc(t('storyRecap', 'ふりかえり')) + '</span></span>'
+					+ '<span class="st-p-next-go" aria-hidden="true">' + arrow('next', '›') + '</span></button>';
+			}
+			// 時刻・名前・分類は写真の上に載せる（表紙と同じ組み）。名前は写真の面に出ているので、写真の無いときの
+			// 「名前の面」（.st-noimg）は置かない。上の帯の分類は、エリアを除いた分類だけ（エリアまで入れると帯で切れた）
+			return '<article class="st-page" data-i="' + i + '" data-chap="' + esc(s.cat || s.area || '') + '" hidden>'
+				+ '<div class="st-p-hero">'
+				+ '<div class="st-p-ph" data-spot="' + (s.id ? parseInt(s.id, 10) : '') + '" aria-hidden="true"></div>'
+				+ '<div class="st-p-cap">'
+				+ when
+				+ '<h4 class="st-p-name"' + jaAttr(s.title) + '>' + name + '</h4>'
+				+ (cat ? '<p class="st-p-cat">' + cat + '</p>' : '')
+				+ '</div></div>'
+				+ '<div class="st-p-body">'
+				+ (s.reason ? '<p class="st-p-reason"' + jaAttr(s.reason) + '>' + esc(s.reason) + '</p>' : '')
+				+ (facts.length ? '<dl class="st-p-info">' + facts.join('') + '</dl>' : '')
+				+ how
+				+ foot
+				+ '</div></article>';
+		}).join('');
+		var bars = spots.map(function () { return '<span></span>'; }).join('');
+		var viewHtml = '<div class="st-v-card">'
+			+ '<div class="st-v-bars" aria-hidden="true">' + bars + '</div>'
+			+ '<div class="st-v-top">'
+			+ '<button type="button" class="st-v-prev" aria-label="' + esc(t('prevSpot', '前の行き先')) + '">' + arrow('prev', '‹') + '</button>'
+			+ '<p class="st-v-chap" aria-live="polite"></p>'
+			+ '<button type="button" class="st-v-close" aria-label="' + esc(t('storyClose', '閉じる')) + '">' + arrow('close', '×') + '</button>'
+			+ '</div>'
+			+ '<div class="st-v-pages">' + pages + '</div>'
+			+ '</div>'
+			// PC だけ、カードの左右に送りのボタン（スマホは下の札と、左右にすべらせる指の動き）
+			+ '<button type="button" class="st-v-side st-v-side--prev" aria-label="' + esc(t('prevSpot', '前の行き先')) + '">' + arrow('prev', '‹') + '</button>'
+			+ '<button type="button" class="st-v-side st-v-side--next" aria-label="' + esc(t('nextSpot', '次の行き先')) + '">' + arrow('next', '›') + '</button>';
+
+		dropStory();
+		el.classList.remove('is-busy');
+		el.classList.add('is-result');
+		el.innerHTML = '<div class="q-res q-res--story">'
+			+ (T.siteName ? '<p class="res-print-site">' + esc(T.siteName) + '</p>' : '')
+			+ '<div class="st-wrap">' + cover + six + '</div>'
+			+ '<div class="st-list" id="' + listId + '" hidden>'
+			+ flow
+			+ '<ol class="rs-grid">' + steps + '</ol>'
+			+ '</div>'
 			+ dock
 			// 紙・PDFからコースに戻れるように（中身は印刷のときに入れる。空のあいだは出ない）
 			+ '<p class="res-print-url">' + esc(data.share_url || '') + '</p>'
 			+ '</div>';
+		if (spots.length) { makeStory(viewHtml, data.title, spots.length); }
 		loadPhotos(ids);
 		bindKeep(data);
 		// 紙・PDFで使う書体を先に読んでおく（印刷は押した瞬間に組むので、その場では間に合わない → warmPaper）。
@@ -1428,6 +1583,7 @@ function mount(el, options) {
 
 		Array.prototype.forEach.call(el.querySelectorAll('.r-reset[data-reset]'), function (b) { b.addEventListener('click', reset); });
 		bindPhone();
+		bindStory();
 		Array.prototype.forEach.call(el.querySelectorAll('.b-chip'), function (btn) {
 			btn.addEventListener('click', function () {
 				if (sending) { return; }
@@ -1543,7 +1699,253 @@ function mount(el, options) {
 		}
 	}
 
+	/*
+	 * C案 ストーリーズの全画面（2026-10-20）。
+	 * 重ねる画面は body の直下に置く。結果の箱（.q-res）は出てくるときに translateY で動くので、その中に
+	 * position:fixed を置くと、動いているあいだ箱を基準に描かれてしまう。
+	 * 開くと履歴を1つ積み、「戻る」で閉じる（スマホで全画面を閉じようとして戻ると、ページごと離れてしまうため）。
+	 * 時間で勝手に次へ進む動きは付けない（読む速さは人による。WCAG 2.2.2）
+	 */
+	var story = null; // { node, i, n, opener }
+	function dropStory() {
+		if (!story) { return; }
+		if (!story.node.hidden) { hideStory(false); }
+		if (story.node.parentNode) { story.node.parentNode.removeChild(story.node); }
+		story = null;
+	}
+	function makeStory(html, title, n) {
+		var node = document.createElement('div');
+		node.className = 'st-view';
+		node.setAttribute('role', 'dialog');
+		node.setAttribute('aria-modal', 'true');
+		node.setAttribute('aria-label', String(title || t('storyDialog', '1か所ずつ見る')));
+		if (T.lang) { node.setAttribute('lang', T.lang); }
+		node.hidden = true;
+		node.innerHTML = html;
+		document.body.appendChild(node);
+		story = { node: node, i: 0, n: n, opener: null };
+		el._epStory = node;
+
+		var q = function (sel) { return node.querySelector(sel); };
+		q('.st-v-close').addEventListener('click', function () { closeStory(); });
+		q('.st-v-prev').addEventListener('click', function () { showPage(story.i - 1); });
+		q('.st-v-side--prev').addEventListener('click', function () { showPage(story.i - 1); });
+		q('.st-v-side--next').addEventListener('click', function () {
+			if (story.i >= story.n - 1) { endStory(); } else { showPage(story.i + 1); }
+		});
+		Array.prototype.forEach.call(node.querySelectorAll('.st-p-next[data-go]'), function (b) {
+			b.addEventListener('click', function () { showPage(parseInt(b.getAttribute('data-go'), 10) || 0); });
+		});
+		var end = q('.st-p-end');
+		if (end) { end.addEventListener('click', endStory); }
+		// 幕（カードの外）を押したら閉じる。PC だけ見える（スマホはカードが画面いっぱい）
+		node.addEventListener('click', function (e) { if (e.target === node) { closeStory(); } });
+		node.addEventListener('keydown', function (e) {
+			if (e.key === 'Escape') { e.preventDefault(); closeStory(); return; }
+			// 修飾キーつきの矢印（ブラウザの戻る・進むなど）は横取りしない
+			if ((e.key === 'ArrowRight' || e.key === 'ArrowLeft') && !e.altKey && !e.metaKey && !e.ctrlKey) {
+				e.preventDefault();
+				if (e.key === 'ArrowLeft') { showPage(story.i - 1); } else if (story.i < story.n - 1) { showPage(story.i + 1); }
+				return;
+			}
+			// Tab はこの画面の中だけを回る（後ろのページへ抜けない）
+			if (e.key === 'Tab') {
+				var list = Array.prototype.filter.call(node.querySelectorAll('a[href], button:not([disabled])'), function (b) {
+					return b.offsetParent !== null && !b.closest('[hidden]');
+				});
+				if (!list.length) { return; }
+				var first = list[0];
+				var last = list[list.length - 1];
+				if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+				else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+			}
+		});
+		// 左右にすべらせて送る（スマホ）。縦に動かした指（本文のスクロール）は拾わない
+		var sx = 0, sy = 0, st = 0;
+		var pagesBox = q('.st-v-pages');
+		var card = q('.st-v-card');
+		// 写真の面を抜けたら、上の帯の下に墨を敷く（白い帯とボタンが和紙の上で見えなくなるので）。scroll は泡立たないので捕まえる側で拾う
+		pagesBox.addEventListener('scroll', function (e) {
+			var p = e.target;
+			var hero = p.querySelector && p.querySelector('.st-p-hero');
+			if (!hero) { return; }
+			card.classList.toggle('is-scrolled', p.scrollTop > hero.offsetHeight - 72);
+		}, true);
+		pagesBox.addEventListener('touchstart', function (e) {
+			var p = e.touches[0];
+			sx = p.clientX; sy = p.clientY; st = Date.now();
+		}, { passive: true });
+		pagesBox.addEventListener('touchend', function (e) {
+			var p = e.changedTouches[0];
+			var dx = p.clientX - sx;
+			var dy = p.clientY - sy;
+			if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5 || Date.now() - st > 800) { return; }
+			if (dx < 0) { if (story.i < story.n - 1) { showPage(story.i + 1); } } else { showPage(story.i - 1); }
+		}, { passive: true });
+		placeStoryPhotos();
+	}
+	function showPage(i) {
+		if (!story) { return; }
+		i = Math.max(0, Math.min(story.n - 1, i));
+		story.i = i;
+		var node = story.node;
+		Array.prototype.forEach.call(node.querySelectorAll('.st-page'), function (p) {
+			var on = parseInt(p.getAttribute('data-i'), 10) === i;
+			p.hidden = !on;
+			if (on) { p.scrollTop = 0; }
+		});
+		Array.prototype.forEach.call(node.querySelectorAll('.st-v-bars span'), function (b, k) {
+			b.className = k < i ? 'is-done' : (k === i ? 'is-now' : '');
+		});
+		var page = node.querySelector('.st-page[data-i="' + i + '"]');
+		var chap = page ? page.getAttribute('data-chap') : '';
+		node.querySelector('.st-v-chap').textContent = (i + 1) + ' / ' + story.n + (chap ? '　' + chap : '');
+		node.querySelector('.st-v-card').classList.remove('is-scrolled');
+		if (page) { clampFacts(page); }
+		node.querySelector('.st-v-prev').disabled = i === 0;
+		node.querySelector('.st-v-side--prev').disabled = i === 0;
+		// 押したボタンが隠れるとフォーカスが body に落ちる。そのときは新しい画面の名前へ
+		var ae = document.activeElement;
+		if (!ae || ae === document.body || !node.contains(ae) || ae.closest('[hidden]')) {
+			var h = page && page.querySelector('.st-p-name');
+			if (h) { focusOn(h); }
+		}
+	}
+	// 店の情報の長い中身（3行を超えるもの）だけに「続きを読む」を付ける。ページを開いて高さが測れるようになってから、1度だけ
+	function clampFacts(page) {
+		Array.prototype.forEach.call(page.querySelectorAll('.st-info-v:not([data-m])'), function (v) {
+			v.setAttribute('data-m', '1');
+			v.classList.add('is-clamp');
+			if (v.scrollHeight <= v.clientHeight + 2) { v.classList.remove('is-clamp'); return; }
+			var more = document.createElement('button');
+			more.type = 'button';
+			more.className = 'st-info-more';
+			more.setAttribute('aria-expanded', 'false');
+			more.textContent = t('readMore', '続きを読む');
+			v.insertAdjacentElement('afterend', more);
+			more.addEventListener('click', function () {
+				var open = v.classList.contains('is-clamp');
+				v.classList.toggle('is-clamp', !open);
+				more.setAttribute('aria-expanded', open ? 'true' : 'false');
+				more.textContent = open ? t('readLess', '閉じる') : t('readMore', '続きを読む');
+			});
+		});
+	}
+	function openStory(i, opener) {
+		if (!story) { return; }
+		story.opener = opener || null;
+		story.node.hidden = false;
+		document.documentElement.classList.add('st-lock');
+		try { history.pushState(Object.assign({}, history.state || {}, { epStory: 1 }), ''); story.pushed = true; } catch (e) { story.pushed = false; }
+		showPage(i);
+		var h = story.node.querySelector('.st-page[data-i="' + story.i + '"] .st-p-name');
+		if (h) { focusOn(h); }
+	}
+	// 画面を隠すだけ（履歴は触らない）。back: 開いたボタンへフォーカスを戻す
+	function hideStory(back) {
+		if (!story || story.node.hidden) { return; }
+		story.node.hidden = true;
+		story.pushed = false;
+		document.documentElement.classList.remove('st-lock');
+		// 閉じたあとにすること（「ふりかえり」の着地）。ページのスクロールを止めているあいだは動かせないので、外してから
+		var after = story.after;
+		story.after = null;
+		if (after) { after(); }
+		if (back !== false && story.opener && document.contains(story.opener)) {
+			try { story.opener.focus({ preventScroll: true }); } catch (e) { story.opener.focus(); }
+		}
+	}
+	// ×・Esc・幕。開いたときに積んだ履歴があれば、それを戻して閉じる（popstate が hideStory を呼ぶ）
+	function closeStory() {
+		if (!story) { return; }
+		if (story.pushed && history.state && history.state.epStory) { history.back(); } else { hideStory(); }
+	}
+	// 最後の1枚の「ふりかえり」。閉じて、6か所の一覧へ
+	function endStory() {
+		if (!story) { return; }
+		story.opener = el.querySelector('.st-six-ttl');
+		if (story.opener) { story.opener.setAttribute('tabindex', '-1'); }
+		story.after = function () { reveal(el.querySelector('.st-six'), true); };
+		closeStory();
+	}
+	window.addEventListener('popstate', function () {
+		if (story && !story.node.hidden && !(history.state && history.state.epStory)) { hideStory(); }
+	});
+
+	// 表紙・6か所の札・1か所ずつの画面に写真を載せる。何度呼んでも同じ（載せたものは飛ばす）
+	function placeStoryPhotos() {
+		var put = function (box, url) {
+			if (!box || box.querySelector('img')) { return; }
+			box.insertAdjacentHTML('afterbegin', '<img src="' + esc(url) + '" alt="" decoding="async">');
+			box.classList.add('has-photo');
+		};
+		var boxes = el.querySelectorAll('.st-tile[data-spot]');
+		Array.prototype.forEach.call(boxes, function (b) {
+			var ph = storyPhotos[b.getAttribute('data-spot')];
+			if (ph) { put(b.querySelector('.st-tile-ph'), ph.src); }
+		});
+		if (story) {
+			Array.prototype.forEach.call(story.node.querySelectorAll('.st-p-ph[data-spot], .st-p-next-ph[data-spot]'), function (b) {
+				var ph = storyPhotos[b.getAttribute('data-spot')];
+				if (ph) {
+					put(b, b.classList.contains('st-p-ph') ? ph.big : ph.src);
+					if (b.classList.contains('st-p-ph')) { b.parentNode.classList.add('has-photo'); }
+				}
+			});
+		}
+		var cover = el.querySelector('.st-cover');
+		var pick = coverPhoto();
+		if (cover && pick) {
+			put(cover.querySelector('.st-bg'), pick.big);
+			cover.classList.add('has-photo');
+		}
+	}
+	/*
+	 * 表紙の写真。コースの中の写真から1枚、機械的に選ぶ（AIには選ばせない）。
+	 * 表紙の枠（スマホは縦長、PC は横長に近い）いっぱいに敷いたとき、引き伸ばしがいちばん少ない写真を選ぶ。
+	 * 誌面の写真は小さいものが多く（手元のDBで、幅780px未満が325枚中184枚。2026-10-18 調べ → 案のメモ §4）、
+	 * 1.6倍に伸ばした写真は粗さがはっきり見えた（2026-10-20 実測。幅1052pxの写真を高さ982pxの表紙に）。
+	 * 1.25倍より伸ばす写真しか無ければ、表紙は文字だけ（墨の面）のまま
+	 */
+	function coverPhoto() {
+		var box = el.querySelector('.st-bg');
+		if (!box) { return null; }
+		// 表紙の写真は文字の上の帯（style.css の .st-bg。幅：高さ＝390：240）。写真が載るまで高さは0なので、幅から高さを出す
+		var fw = box.clientWidth;
+		var fh = Math.round(fw * 240 / 390);
+		// PC は表紙に写真を敷かない（style.css で枠ごと隠す）。隠れた枠は大きさが0で、どの写真も「伸ばさずに済む」と判定されるので選ばない
+		if (!fw || !fh) { return null; }
+		var best = null;
+		var bestScale = 1.25;
+		Array.prototype.forEach.call(el.querySelectorAll('.st-tile[data-spot]'), function (b) {
+			var p = storyPhotos[b.getAttribute('data-spot')];
+			if (!p || !p.w || !p.h) { return; }
+			var scale = Math.max(fw / p.w, fh / p.h); // 枠を埋めるのに要る倍率（object-fit:cover）
+			if (scale <= bestScale) { best = p; bestScale = scale; }
+		});
+		return best;
+	}
+
+	// 表紙の「旅をはじめる」・6か所の札（その画面を開く）・「一覧で見る」
+	function bindStory() {
+		Array.prototype.forEach.call(el.querySelectorAll('.st-start, .st-tile'), function (b) {
+			b.addEventListener('click', function () { openStory(parseInt(b.getAttribute('data-go'), 10) || 0, b); });
+		});
+		var tg = el.querySelector('.st-list-tg');
+		var list = el.querySelector('.st-list');
+		if (tg && list) {
+			tg.addEventListener('click', function () {
+				var open = list.hidden;
+				list.hidden = !open;
+				tg.setAttribute('aria-expanded', open ? 'true' : 'false');
+				tg.textContent = open ? t('storyListClose', '一覧を閉じる') : t('storyList', '一覧で見る');
+				if (open) { reveal(list, true); }
+			});
+		}
+	}
+
 	function reset() {
+		dropStory();
 		try { sessionStorage.removeItem(STORAGE_KEY); } catch (e) { /* プライベートモード等では無視 */ }
 		answers = QUESTIONS.map(function () { return null; });
 		lastReq = null;

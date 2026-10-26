@@ -12,6 +12,9 @@
  *
  * 描くのは「今の見開き」だけ（236ページぶんの要素は作らない）。前後2見開きの画像は先に読んでおく。
  * URL の #p=12 でページを共有できる。
+ *
+ * 誌面のQRコードは、その場所を押せばリンク先が開く（位置とURLは管理画面で読み取って data-links に入っている）。
+ * スマホで誌面を読んでいる人は、画面のQRを同じスマホのカメラで読めないため。
  */
 (function () {
 	'use strict';
@@ -22,6 +25,9 @@
 	var base = book.getAttribute('data-base');
 	var ratio = parseFloat(book.getAttribute('data-ratio')) || 1.4142;
 	var rtl = book.getAttribute('data-rtl') === '1';
+	var links = {};
+	try { links = JSON.parse(book.getAttribute('data-links') || '{}') || {}; } catch (e) { links = {}; }
+	var linkLabel = book.getAttribute('data-link-label') || '';
 	var stage = book.querySelector('.book-stage');
 	var view = book.querySelector('.book-view');
 	var box = book.querySelector('.book-box');
@@ -109,8 +115,9 @@
 		return Promise.race([all, new Promise(function (r) { setTimeout(r, 800); })]);
 	}
 
-	// ページ1枚ぶんの要素。n が 0 なら何も載っていない紙の外側（空）
-	function pageEl(n, cls) {
+	// ページ1枚ぶんの要素。n が 0 なら何も載っていない紙の外側（空）。
+	// withLinks … QRコードのリンクを重ねるか。めくりの間だけの複製（読み上げから隠す）には付けない
+	function pageEl(n, cls, withLinks) {
 		var d = document.createElement('div');
 		d.className = 'book-page ' + (cls || '') + (n ? '' : ' is-empty');
 		if (n) {
@@ -121,8 +128,28 @@
 			img.decoding = 'sync';
 			img.src = src(n);
 			d.appendChild(img);
+			if (withLinks) { (links[n] || []).forEach(function (l) { d.appendChild(linkEl(l)); }); }
 		}
 		return d;
+	}
+
+	// QRコードの上に重ねるリンク。l = [x, y, w, h, url]（ページに対する割合）。
+	// 誌面のQRはスマホでは20px前後にしかならず指で押せないので、QRの中心に置いて最小の大きさは CSS で確保する
+	function linkEl(l) {
+		var a = document.createElement('a');
+		a.className = 'book-link';
+		a.href = l[4];
+		a.target = '_blank';
+		a.rel = 'noopener';
+		a.style.left = ((l[0] + l[2] / 2) * 100) + '%';
+		a.style.top = ((l[1] + l[3] / 2) * 100) + '%';
+		a.style.width = (l[2] * 100) + '%';
+		a.style.height = (l[3] * 100) + '%';
+		var host = '';
+		try { host = new URL(l[4]).hostname.replace(/^www\./, ''); } catch (e) { /* 名前が取れなくても押せる */ }
+		a.setAttribute('aria-label', linkLabel + (host ? '（' + host + '）' : ''));
+		a.title = l[4];
+		return a;
 	}
 
 	// --- 大きさ ---
@@ -178,10 +205,10 @@
 		box.innerHTML = '';
 		var el = spreadEl(offsetOf(current));
 		if (spread) {
-			el.appendChild(pageEl(s.left, 'is-left'));
-			el.appendChild(pageEl(s.right, 'is-right'));
+			el.appendChild(pageEl(s.left, 'is-left', true));
+			el.appendChild(pageEl(s.right, 'is-right', true));
 		} else {
-			el.appendChild(pageEl(s.page, ''));
+			el.appendChild(pageEl(s.page, '', true));
 		}
 		box.appendChild(el);
 		preloadAround(current);
@@ -420,6 +447,9 @@
 
 	view.addEventListener('pointerdown', function (e) {
 		if (e.pointerType === 'mouse' && e.button !== 0) { return; }
+		// QRコードのリンクは、めくり・拡大の操作に回さずブラウザの普通のリンクとして押させる。
+		// 枠が指を捕まえる（setPointerCapture）と、離したときのクリックがリンクに届かない
+		if (e.target.closest && e.target.closest('.book-link')) { return; }
 		// マウスは1本しかない。枠の外で離されて pointerup が来なかった分が残ると、
 		// 次のクリックが「2本目の指」と見なされて拡大の操作になってしまう
 		if (e.pointerType === 'mouse') { pts = {}; pinch = null; }

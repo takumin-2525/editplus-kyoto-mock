@@ -3,7 +3,7 @@ Theme Name: EditPlus Kyoto Concierge
 Theme URI: https://github.com/takumin-2525/editplus-web-renewal
 Author: 高速オフセット / 株式会社エディットプラス
 Description: 京都・大阪観光コンシェルジュ リニューアル用の自作テーマ。60_デザイン/kyoto-concierge-rough.html のデザインを再現。
-Version: 0.9.73
+Version: 0.9.88
 Requires at least: 6.0
 Requires PHP: 8.0
 Text Domain: editplus-kyoto
@@ -24,7 +24,8 @@ Text Domain: editplus-kyoto
 
 /* ============ design tokens（rough.html 由来） ============ */
 :root{
-  --washi:#eff0ec; --panel:#f7f8f5; --card:#ffffff;
+  /* 地の色は、2026-10-26 に「一旦背景を白く」（野口）で和紙 #eff0ec から白にした。戻すときはこの1か所を #eff0ec に */
+  --washi:#ffffff; --panel:#f7f8f5; --card:#ffffff;
   --sumi:#191b18; --sumi-soft:#4f544c; --sumi-faint:#666b63; --sumi-mute:#8b9088;
   /* 墨の4段（2026-09-16 に見直し。カードの地を白から和紙にした日に、上2段が地に溶けた）
      → 60_デザイン/2026-09-16_カードの文字が薄い件.md
@@ -167,11 +168,12 @@ nav.main a:hover{opacity:1}
 /* ============ hero ============ */
 /* 枠の縦横比は16:9（2026-10-06 の依頼。以前は高さ94vhで、スマホでは縦長に切れていた）。
    ただしスマホ（840px以下）だけは 2026-10-07 に画面の高さへ戻した（案A。下の @media(max-width:840px)）。比率を変えるときは inc/hero-media.php の EDITPLUS_HERO_RATIO も揃える。
-   overflow を hidden にしないのは、文字が枠に収まらない幅で切れずに枠のほうが伸びるように（clip は最小の高さを保つ） */
-.hero{--hero-ratio:16/9;position:relative;aspect-ratio:var(--hero-ratio);display:flex;align-items:flex-end;color:#fff;overflow:clip;
+   overflow を hidden にしないのは、文字が枠に収まらない幅で切れずに枠のほうが伸びるように。
+   はみ出しを切るのは写真の箱（.bg）だけ。枠ごと切ると、検索欄の入力中の候補が写真の下端で切れる（2026-10-16） */
+.hero{--hero-ratio:16/9;position:relative;aspect-ratio:var(--hero-ratio);display:flex;align-items:flex-end;color:#fff;
   background:linear-gradient(160deg,#232b48 0%,#33436a 55%,#191b18 100%)}
 /* z-index:0 で .bg を閉じた重なりにする。無いと、入れ替え中の写真（z-index:1/2）や動画が .bg の外の幕（.scrim）より上に出て、文字の下が暗くならない */
-.hero .bg{position:absolute;inset:0;z-index:0}
+.hero .bg{position:absolute;inset:0;z-index:0;overflow:clip}
 .hero .bg img,.hero .bg video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:saturate(.86) contrast(1.07) brightness(.82)}
 /* 動画は静止画（poster）の上で再生する。動きを減らす設定の端末では動画を出さず静止画のまま */
 .hero .bg video{z-index:1}
@@ -514,6 +516,227 @@ section{padding:46px 0}
   .r-dock{transition:transform .25s ease,visibility .25s}
   .r-dock.is-off{transform:translateY(100%);visibility:hidden}
 }
+
+/* ---- 結果画面 C案 ストーリーズ（2026-10-20 → 60_デザイン/2026-10-16_プラン結果画面の案.md §3・§7・§11） ----
+   ページの中には「表紙」と「この日の◯か所」だけを置き、1か所ずつの画面は押したときに全画面で重ねる（.st-view）。
+   今までのカードの列は「一覧で見る」（.st-list）の中に残す。
+   色はほかの欄と同じ：白い面（--card）に墨の文字、主ボタン・番号・移動は藍（2026-10-24）。
+   10/20 は墨の帯にしていたが、トップの中で診断の欄だけ夜になり、サイトの統一感が無くなった（ユーザーの指摘）。
+   墨は写真の上の文字を読ませるかげにだけ残す */
+/* 表紙と6か所は、左右の余白（.wrap の30px）を打ち消して画面の端までの白い面にする（スマホ・PC とも）。
+   幅を親ではなく画面で決めるのは、ホテル・現在地のページでも .wrap の余白が同じとは限らないため。横にはみ出す分は html,body の overflow-x:clip で切る。
+   和紙の地との境は、上下の細い罫だけで分ける */
+.st-wrap{margin-inline:calc(50% - 50vw);background:var(--card);border-block:1px solid var(--line)}
+.st-cover{position:relative;margin:0;color:var(--sumi)}
+/* 表紙の写真は文字の上の帯に置き、暗くしない（写真の上に文字を載せていたときは、文字を読ませるために下半分を墨に沈めていた）。
+   載るまでは高さ0。幅：高さは quiz.js の coverPhoto() と同じ 390：240 */
+.st-bg{position:relative;overflow:hidden}
+.st-cover.has-photo .st-bg{aspect-ratio:390/240}
+.st-bg img{display:block;width:100%;height:100%;object-fit:cover}
+.st-cv{padding:24px 20px 28px}
+.st-kicker{display:inline-block;margin:0 0 14px;padding:4px 12px;border-radius:999px;background:var(--washi);font-size:12px;letter-spacing:var(--tr-meta);color:var(--indigo)}
+.st-cover .res-title{color:var(--sumi);font-size:clamp(24px,3vw,36px);line-height:1.5}
+.st-cover .res-desc{color:var(--sumi-soft)}
+.st-cover .res-more{color:var(--indigo);text-decoration:underline;text-underline-offset:4px}
+/* 要点は丸い札に（スマホの2列の枠 .res-stats の指定を、ここでは外す） */
+.st-cover .res-stats{display:flex;flex-wrap:wrap;gap:6px;margin-top:18px;background:none;border:0;color:var(--sumi-soft)}
+.st-cover .res-stats>span:not(.res-badge){padding:4px 12px;border:1px solid var(--rule);border-radius:999px;font-size:12px;line-height:1.6}
+.st-cover .res-stats>span:not(.res-badge):nth-child(odd){border-right:1px solid var(--rule)}
+.st-start{display:flex;align-items:center;justify-content:center;gap:10px;width:100%;min-height:52px;margin-top:20px;border:0;border-radius:999px;background:var(--indigo);color:#fff;font-family:var(--mincho);font-size:16px;letter-spacing:var(--tr-meta);cursor:pointer}
+.st-start .ep-icon{width:18px;height:18px;margin:0;vertical-align:0;stroke-width:2}
+.st-start:hover{background:var(--indigo-soft)}
+.st-list-tg{display:block;min-height:44px;margin:6px auto 0;padding:0 12px;border:0;background:none;font:inherit;font-size:13px;letter-spacing:var(--tr-body);color:var(--indigo);cursor:pointer;text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:4px}
+.st-list-tg:hover{text-decoration-color:currentColor}
+.st-cover :focus-visible,.st-six :focus-visible{outline:2px solid var(--indigo);outline-offset:3px}
+/* この日の◯か所。見出しは小さく、右へ細い罫を引いて札の列の頭にする */
+.st-six{padding:24px 20px 28px;border-top:1px solid var(--line)}
+.st-six-ttl{display:flex;align-items:center;gap:14px;margin:0 0 16px;font-family:var(--mincho);font-size:16px;font-weight:500;letter-spacing:var(--tr-head);color:var(--sumi)}
+.st-six-ttl::after{content:"";flex:1;height:1px;background:var(--line)}
+.st-six-ttl:focus{outline:none}
+/* スマホは2列（3列では名前が「ホテルグランヴ…」まで切れた）。間の幅は札の下の「次へ何分」が読める分 */
+.st-tiles{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 12px}
+.st-tile{position:relative;display:block;width:100%;aspect-ratio:9/8;padding:0;border:0;border-radius:10px;overflow:hidden;background:var(--panel);color:#fff;font:inherit;text-align:left;cursor:pointer}
+.st-tile-ph{position:absolute;inset:0;display:grid;place-items:center}
+.st-tile-ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transition:transform .3s}
+.st-tile:hover .st-tile-ph img{transform:scale(1.04)}
+.st-noimg{padding:0 10px;font-family:var(--mincho);font-size:13px;line-height:1.45;letter-spacing:var(--tr-body);text-align:center;color:var(--sumi-soft);
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.has-photo>.st-noimg{display:none}
+.st-tile-cap{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;padding:28px 10px 8px;background:linear-gradient(rgba(25,27,24,0),rgba(25,27,24,.78));line-height:1.35}
+.st-tile-t{font-family:var(--serif);font-size:17px;font-weight:600;font-variant-numeric:lining-nums}
+/* 名前は2行まで */
+.st-tile-n{font-size:12px;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;line-break:strict}
+/* 写真が無い札は、真ん中に名前が出ているので下の名前は重ねない。時刻は白い面の上なので墨で */
+.st-tile-ph:not(.has-photo)+.st-tile-cap{background:none;color:var(--sumi)}
+.st-tile-ph:not(.has-photo)+.st-tile-cap .st-tile-n{display:none}
+/* 札の下：出る時刻・滞在と、次の場所へ何で何分（quiz.js の tiles） */
+.st-tile-stay{margin:8px 0 0;font-size:12px;line-height:1.6;color:var(--sumi-mute);font-variant-numeric:tabular-nums}
+.st-tile-leg{margin:6px 0 0;padding-top:6px;border-top:1px solid var(--line);font-size:12px;line-height:1.6;color:var(--indigo)}
+.st-tile-leg::after{content:" →"}
+.st-tile-leg .ep-icon{width:14px;height:14px}
+/* 6か所の下（ルート・予算・注意書き・残す・もう一度） */
+.st-six .r-foot{margin-top:24px}
+.st-six .r-map{display:flex;justify-content:center;width:100%;border-color:var(--indigo);border-radius:999px;color:var(--indigo);text-decoration:none}
+.st-six .r-map:hover{background:var(--indigo);color:#fff}
+.st-six .b-chip{border-color:transparent;border-radius:999px;background:var(--washi);color:var(--sumi)}
+.st-six .b-chip:hover{border-color:var(--rule)}
+.st-six .r-keep-btn{border-color:var(--rule);border-radius:999px}
+.st-six .r-again{display:block;margin:20px 0 0;padding-top:16px;border-top:1px solid var(--line);text-align:center}
+.st-six .r-again .r-reset{font-family:var(--mincho);font-size:15px;letter-spacing:var(--tr-head);color:var(--indigo)}
+/* 一覧（今までのカードの列） */
+.st-list{margin-top:34px}
+.st-list[hidden]{display:none}
+/* 予算チップを押して待つあいだ（.quiz.is-busy）。表紙と6か所の札だけを薄くし、チップと「組み立てています」は残す */
+.quiz.is-busy .q-res--story>.st-wrap{opacity:1;pointer-events:auto}
+/* 帯の上の罫と余白は外す（白い面の上下の罫が区切りになる） */
+.q-res--story{padding-top:0;border-top:0}
+.quiz.is-busy .st-cover,.quiz.is-busy .st-six>:not(.r-foot){opacity:.32;pointer-events:none;transition:opacity .3s}
+
+/* 1か所ずつの画面（全画面で重ねる。quiz.js の makeStory）。スマホは画面いっぱい、PC は和紙の幕の上に横長の1枚 */
+html.st-lock,html.st-lock body{overflow:hidden}
+.st-view{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;background:rgba(239,240,236,.97)}
+.st-view[hidden]{display:none}
+.st-v-card{position:relative;display:flex;flex-direction:column;width:100%;height:100%;height:100dvh;overflow:hidden;background:var(--washi);color:var(--sumi)}
+.st-v-bars{position:absolute;z-index:3;top:calc(10px + env(safe-area-inset-top));left:14px;right:14px;display:flex;gap:4px}
+.st-v-bars span{flex:1;height:3px;border-radius:2px;background:rgba(255,255,255,.4)}
+.st-v-bars .is-done,.st-v-bars .is-now{background:#fff}
+.st-v-top{position:absolute;z-index:3;top:calc(20px + env(safe-area-inset-top));left:8px;right:8px;display:flex;align-items:center;gap:6px}
+.st-v-prev,.st-v-close{flex:none;display:grid;place-items:center;width:44px;height:44px;padding:0;border:0;border-radius:50%;background:rgba(0,0,0,.35);color:#fff;font:inherit;font-size:22px;line-height:1;cursor:pointer}
+/* 矢印・×は inc/icons.php の形（24の枠の真ん中に描いてある）。文字の「›」「×」は書体で字面が上下にずれた */
+.st-v-prev .ep-icon,.st-v-close .ep-icon,.st-v-side .ep-icon,.st-p-next-go .ep-icon{width:20px;height:20px;margin:0;vertical-align:0;stroke-width:2}
+.st-v-prev:disabled{visibility:hidden}
+.st-v-chap{flex:1;min-width:0;margin:0;font-size:12px;line-height:44px;letter-spacing:var(--tr-meta);color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.5);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+/* 写真の面を抜けたら（quiz.js が .is-scrolled を付ける）、上の帯の下に白い面を敷き、帯とボタンを墨・藍にする
+   （和紙の上では白い帯と×が消える。10/20 は墨を敷いていたが、ここだけ黒い帯が出た） */
+.st-v-card::before{content:"";position:absolute;z-index:2;top:0;left:0;right:0;height:calc(70px + env(safe-area-inset-top));background:var(--card);border-bottom:1px solid var(--line);opacity:0;transition:opacity .2s;pointer-events:none}
+.st-v-card.is-scrolled::before{opacity:1}
+.st-v-card.is-scrolled .st-v-prev,.st-v-card.is-scrolled .st-v-close{background:none;color:var(--sumi)}
+.st-v-card.is-scrolled .st-v-chap{color:var(--sumi-mute);text-shadow:none}
+.st-v-card.is-scrolled .st-v-bars span{background:var(--line)}
+.st-v-card.is-scrolled .st-v-bars .is-done,.st-v-card.is-scrolled .st-v-bars .is-now{background:var(--indigo)}
+.st-v-pages{position:relative;flex:1;min-height:0}
+/* ページごと縦に流す（写真の面も一緒に上へ抜ける）。写真を止めて下の本文だけを流していたときは、
+   店の情報が長いと本文の窓（スマホで約390px）の中を何度も送ることになった（10/20） */
+.st-page{position:absolute;inset:0;display:flex;flex-direction:column;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.st-page[hidden]{display:none}
+/* 写真の面。時刻・名前・分類を下に載せる。名前が長いと面のほうが伸びる（文字を写真からはみ出させない）。
+   写真が無いときの地は藍（白い文字が読める、サイトの差し色） */
+.st-p-hero{position:relative;flex:none;display:flex;flex-direction:column;justify-content:flex-end;min-height:min(62vh,560px);background:var(--indigo);color:#fff}
+.st-p-ph{position:absolute;inset:0;overflow:hidden}
+.st-p-ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+/* 上の端は帯とボタンのために暗くする */
+.st-p-ph::after{content:"";position:absolute;left:0;right:0;top:0;height:120px;background:linear-gradient(rgba(0,0,0,.38),rgba(0,0,0,0))}
+/* 文字の下の暗さは文字の箱に持たせる。名前が4行になっても、暗い所が文字と一緒に上へ伸びる
+   （写真の面の決まった高さから暗くしていたときは、長い名前の上の行が明るい写真の上に出て読めなかった）。
+   下の端まで沈めると、和紙の本文との間に黒い帯が見えたので .72 で止める */
+.st-p-cap{position:relative;padding:96px 22px 44px;overflow-wrap:anywhere}
+.st-p-hero.has-photo .st-p-cap{background:linear-gradient(rgba(25,27,24,0),rgba(25,27,24,.6) 90px,rgba(25,27,24,.72))}
+.st-p-hero.has-photo .st-p-when{text-shadow:0 1px 12px rgba(0,0,0,.4)}
+.st-p-when{margin:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;line-height:1.1}
+.st-p-when b{font-family:var(--serif);font-size:44px;font-weight:600;letter-spacing:var(--tr-display);font-variant-numeric:lining-nums}
+.st-p-when small{font-size:12px;letter-spacing:var(--tr-body);opacity:.8}
+/* 名前は機械が選ぶので長さを選べない（「ホテルグランヴィア京都 レストラン…」）。行の長さを揃えて折る */
+.st-p-name{margin:10px 0 0;font-family:var(--mincho);font-size:clamp(22px,6.4vw,28px);font-weight:600;line-height:1.4;letter-spacing:var(--tr-head);text-shadow:0 1px 12px rgba(0,0,0,.4)}
+.st-p-name:focus{outline:none}
+.st-p-name a{color:inherit;text-decoration:none}
+.st-p-name a:hover{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:6px}
+/* 名前の末尾の矢印は、最後の字と同じ行に置き、字面の真ん中に合わせる */
+.st-p-name-go{display:inline-grid;place-items:center;width:.8em;height:.8em;margin-left:.2em;vertical-align:-.04em;opacity:.7}
+.st-p-name-go .ep-icon{width:100%;height:100%;margin:0;vertical-align:0;stroke-width:2.2}
+.st-p-cat{margin:8px 0 0;font-size:12px;line-height:1.7;letter-spacing:var(--tr-meta);opacity:.8}
+.st-p-hero a:focus-visible{outline:2px solid #fff;outline-offset:3px}
+/* 本文は写真の面に少し重ねて、角の丸い和紙の面にする */
+.st-p-body{position:relative;flex:1 0 auto;display:flex;flex-direction:column;margin-top:-20px;padding:26px 22px calc(18px + env(safe-area-inset-bottom));border-radius:20px 20px 0 0;background:var(--washi);overflow-wrap:anywhere}
+.st-p-reason{margin:0;font-size:15px;line-height:1.9;color:var(--sumi)}
+/* 店の情報。左右は画面の端まで（罫を端から端へ）、中身は本文と同じ線に揃える。
+   アイコンは丸の真ん中に置き、丸は行（見出し＋中身）の高さの真ん中に置く */
+.st-p-info{margin:22px -22px 0;padding:0;border-top:1px solid var(--line)}
+.st-info{display:grid;grid-template-columns:32px minmax(0,1fr);column-gap:12px;align-items:start;padding:14px 22px;border-bottom:1px solid var(--line)}
+.st-info dt{display:contents}
+.st-info-ic{grid-row:1/3;align-self:center;display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--panel);color:var(--sumi-soft)}
+.st-info-ic .ep-icon{width:17px;height:17px;margin:0;vertical-align:0}
+.st-info-k{display:block;font-size:11px;line-height:16px;letter-spacing:var(--tr-meta);color:var(--sumi-faint)}
+.st-info dd{grid-column:2;margin:2px 0 0;min-width:0}
+.st-info-v{display:block;font-size:14px;line-height:1.7;color:var(--sumi)}
+.st-info-v.is-clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.st-info-more{display:inline-flex;align-items:center;min-height:36px;margin:0 0 -8px;padding:0;border:0;background:none;font:inherit;font-size:12px;color:var(--indigo);cursor:pointer}
+/* ここまでの行き方。手段と分数を左に、道順のリンクを右の丸い札に（リンクが長い言語では下の行へ回る） */
+.st-p-how{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px 12px;margin:18px 0 0;font-size:13px;line-height:1.6;color:var(--sumi-soft)}
+.st-p-how-t{min-width:0}
+.st-p-how-t .rs-from{margin-right:.5em}
+.st-p-how a{display:inline-flex;align-items:center;min-height:36px;padding:0 14px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--indigo);text-decoration:none;white-space:nowrap}
+.st-p-how a:hover{border-color:var(--indigo)}
+.st-p-how a .ep-nb{display:inline-flex;align-items:center}
+.st-p-how a .ep-icon{vertical-align:0}
+/* 下の札は本文が短くても画面の下に置く。本文が長いときは本文の後ろに続く */
+.st-p-next{display:flex;align-items:center;gap:12px;width:100%;margin-top:auto;padding:10px 12px;border:0;border-radius:14px;background:var(--card);box-shadow:0 2px 10px rgba(0,0,0,.08);font:inherit;color:var(--sumi);text-align:left;cursor:pointer}
+.st-p-body>:nth-last-child(2){margin-bottom:22px}
+.st-p-next-ph{position:relative;flex:none;width:48px;height:48px;border-radius:8px;overflow:hidden;background:var(--panel)}
+.st-p-next-ph img{display:block;width:100%;height:100%;object-fit:cover}
+.st-p-next-in{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.5}
+.st-p-next-k{font-size:11px;color:var(--sumi-faint);overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.st-p-next-n{font-family:var(--mincho);font-size:16px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.st-p-next-go{flex:none;display:grid;place-items:center;width:36px;height:36px;border-radius:50%;background:var(--indigo);color:#fff;font-size:20px;line-height:1}
+.st-p-next-go .ep-icon{width:18px;height:18px}
+.st-v-side{display:none}
+/* スマホの紹介文は2行で畳み、要点は「◯◯発・乗り物・時刻の幅・行き先の数」だけにする（表紙が文字で埋まらないように） */
+@media(max-width:600px){
+  .st-cover .res-desc.is-clamp{-webkit-line-clamp:2}
+  .st-cover .res-minor{display:none}
+}
+/* タブレットは札を3列に（2列だと1枚が大きくなりすぎる） */
+@media(min-width:601px){
+  .st-tiles{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .st-cv,.st-six{padding-inline:32px}
+}
+@media(min-width:841px){
+  /* PC は表紙と6か所を左右に並べず、上下に積んで1200pxの枠を横いっぱいに使う（2026-10-24）。
+     左右2列のときは、左の列（題と紹介）の下に400px近く空き、帯が中央に寄って見えた（ユーザーの指摘）。
+     上の段は「題と紹介｜要点と始める」、下の段は6か所を横一列。文字と札はほかの欄と同じ線（画面の中心から570px）に揃える。
+     表紙の写真は出さない（10/20 ユーザーの指示「左側の画像削除」。写真は6か所の札と、1か所ずつの画面に出ている） */
+  .st-wrap{padding:56px max(32px,calc(50vw - 570px))}
+  .st-bg{display:none}
+  .st-cv{display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,420px);column-gap:clamp(40px,6vw,80px);align-items:end;padding:0}
+  .st-cover .res-title{font-size:clamp(30px,2.6vw,36px)}
+  .st-cv-go .res-stats{margin-top:0}
+  .st-six{padding:44px 0 0;border-top:0}
+  /* 札は行き先の数だけ横に並べる（4か所でも6か所でも1行） */
+  .st-tiles{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:16px}
+  .st-tile{aspect-ratio:3/4}
+  .st-tile-t{font-size:22px}
+  .st-tile-n{font-size:14px}
+  /* ルート・予算は1行に。注意書きと「残す」はその下 */
+  .st-six .r-foot{align-items:center;margin-top:32px}
+  .st-six .r-map{width:auto;padding-inline:28px}
+  .st-six .r-budget{margin-left:auto}
+  .st-p-hero{min-height:0}
+  /* 1か所ずつ：画面の真ん中の縦長の1枚（440px）をやめ、横長の1枚の左に写真を高さいっぱい、右に説明（2026-10-24）。
+     縦長のときは1440pxの画面で左右に500px近い幕だけが残り、中央に寄って見えた */
+  .st-v-card{width:min(1200px,calc(100vw - 160px));height:min(780px,calc(100vh - 80px));border-radius:16px;background:var(--card);box-shadow:0 12px 40px rgba(25,27,24,.12)}
+  .st-page{flex-direction:row;overflow:hidden}
+  .st-p-hero{flex:0 0 53%}
+  .st-p-cap{padding:96px 36px 36px}
+  .st-p-name{font-size:clamp(26px,2.4vw,32px)}
+  .st-p-body{flex:1;margin:0;padding:96px 36px 28px 44px;border-radius:0;background:var(--card);overflow-y:auto;overscroll-behavior:contain}
+  .st-p-info{margin-inline:0}
+  .st-info{padding-inline:0}
+  .st-p-next{background:var(--washi);box-shadow:none}
+  /* 進み具合の帯・分類・×は右の説明の上に。前へは左右の大きな矢印に任せる */
+  .st-v-bars{top:28px;left:calc(53% + 44px);right:36px}
+  .st-v-bars span{background:var(--line)}
+  .st-v-bars .is-done,.st-v-bars .is-now{background:var(--indigo)}
+  .st-v-top{top:42px;left:calc(53% + 38px);right:28px}
+  .st-v-top .st-v-prev{display:none}
+  .st-v-chap{color:var(--sumi-mute);text-shadow:none}
+  .st-v-close{background:var(--washi);color:var(--sumi)}
+  .st-v-card::before{display:none}
+  .st-v-side{position:absolute;top:50%;display:grid;place-items:center;width:48px;height:48px;margin-top:-24px;padding:0;border:1px solid var(--line);border-radius:50%;background:var(--card);color:var(--sumi);font:inherit;font-size:28px;line-height:1;cursor:pointer}
+  .st-v-side:hover{border-color:var(--sumi)}
+  .st-v-side:disabled{visibility:hidden}
+  .st-v-side--prev{left:max(16px,calc(50% - 600px - 68px))}
+  .st-v-side--next{right:max(16px,calc(50% - 600px - 68px))}
+}
+@media (prefers-reduced-motion:reduce){.st-tile-ph img{transition:none}}
 
 /* feature: 特集
    おすすめ情報と同じく、箱（白地＋枠線）は使わない（2026-09-16 監査 → 案A）。
@@ -983,6 +1206,10 @@ section{padding:46px 0}
    行の長さはどの言語でもそろえる（日本語は base の指定で文節ごと。韓国語で「…교토역／앞점」と最後の行に1語だけ落ちた） */
 .entry-title{font-family:var(--mincho);font-size:clamp(26px,3.4vw,38px);font-weight:600;line-height:1.5;letter-spacing:var(--tr-head);color:var(--sumi);margin:0;
   overflow-wrap:anywhere;text-wrap:balance}
+/* キャッチ（スポットだけ。誌面の見出しの一文 → inc/entry.php）。主役は店名なので題名より一段小さく、色も一段淡く。
+   明朝でそろえて、題名と1つの見出しのかたまりに見せる */
+.entry-catch{font-family:var(--mincho);font-size:clamp(17px,2vw,20px);font-weight:500;line-height:1.7;letter-spacing:var(--tr-head);
+  color:var(--sumi-soft);margin:10px 0 0;text-wrap:balance}
 /* 題名の下の一言。記事は「取材・文｜編集部　日付」、スポットは最寄り駅（一言で書けるときだけ） */
 .entry-meta{margin:14px 0 0;font-size:13px;line-height:1.7;letter-spacing:var(--tr-body);color:var(--sumi-faint)}
 
@@ -1358,6 +1585,14 @@ body.error404 .page-main{flex:1 0 auto}
 .filters-clear:hover{color:var(--sumi)}
 
 /* --- 結果の件数・0件のとき --- */
+/* 検索結果の探し直し。ヒーローの検索欄と同じ形を、紙の地の上に置ける色にした */
+.results-search{display:flex;max-width:560px;border:1px solid var(--line);background:var(--card);border-radius:2px}
+.results-search:focus-within{border-color:var(--indigo);box-shadow:0 0 0 1px var(--indigo)}
+.results-search input{flex:1;min-width:0;border:0;background:transparent;color:var(--sumi);font-family:var(--gothic);font-size:15px;padding:12px 16px;outline:none}
+.results-search input::placeholder{color:var(--sumi-faint)}
+.results-search button{border:0;background:var(--indigo);color:#fff;font-family:var(--mincho);letter-spacing:var(--tr-label);font-size:14px;padding:0 24px;cursor:pointer}
+.results-search button:hover{background:var(--indigo-soft)}
+.search-suggest{margin-bottom:22px}
 .search-count{font-size:13px;color:var(--sumi-soft);letter-spacing:var(--tr-head);margin:0 0 18px}
 .search-empty{max-width:620px}
 .search-empty-head{font-family:var(--mincho);font-size:18px;letter-spacing:var(--tr-body);margin:0 0 10px}
@@ -1407,7 +1642,7 @@ body.error404 .page-main{flex:1 0 auto}
   .hsub{margin-top:14px}
   .hero-search{margin-top:24px}
   .hero-search button{padding:0 20px}
-  .hero-search input{font-size:16px} /* 16px未満だと iPhone が検索欄に合わせてページを拡大する（BUGS #10） */
+  .hero-search input,.results-search input{font-size:16px} /* 16px未満だと iPhone が検索欄に合わせてページを拡大する（BUGS #10） */
   section{padding:34px 0}
   .page-main{padding:110px 0 64px}
   /* /hotel/ */
@@ -1604,6 +1839,11 @@ body.error404 .page-main{flex:1 0 auto}
 .book-page{position:relative;flex:none;width:var(--pw);height:var(--ph);background:#fff;box-shadow:0 14px 44px rgba(0,0,0,.4)}
 .book-page.is-empty{background:none;box-shadow:none}
 .book-page img{display:block;width:100%;height:100%;object-fit:contain;background:#fff;pointer-events:none;-webkit-user-drag:none}
+/* 誌面のQRコードに重ねるリンク。QRの中心に置き、小さく描かれたQRでも指で押せる大きさ（36px）は確保する。
+   押せることが分かるように枠と角の印を付ける（誌面の上なので、色は紙の上で読める藍） */
+.book-link{position:absolute;min-width:36px;min-height:36px;transform:translate(-50%,-50%);border:2px solid rgba(51,67,106,.75);border-radius:4px;background:rgba(51,67,106,.06);z-index:1;transition:background .2s,border-color .2s}
+.book-link::after{content:"↗";position:absolute;top:-9px;right:-9px;width:16px;height:16px;border-radius:50%;background:var(--indigo);color:#fff;font-size:10px;line-height:16px;text-align:center}
+.book-link:hover,.book-link:focus-visible{background:rgba(51,67,106,.18);border-color:var(--indigo);outline:none}
 /* 見開きは背（のど）に薄い影を落として1冊に見せる */
 .book-page.is-left:not(.is-empty){box-shadow:0 14px 44px rgba(0,0,0,.4),inset -18px 0 24px -20px rgba(0,0,0,.35)}
 .book-page.is-right:not(.is-empty){box-shadow:0 14px 44px rgba(0,0,0,.4),inset 18px 0 24px -20px rgba(0,0,0,.35)}
@@ -1806,6 +2046,29 @@ body.is-book-full{overflow:hidden}
 }
 
 
+/* ---- 誌面から（templates/spot-magazine-extra.php） ----
+   誌面用メモに埋もれていた誌面の文。本文（紹介文）の続きとして読ませるので、幅と文字は本文にそろえる。
+   囲むのは Check だけ（全部を箱に入れると、クーポンと基本情報に挟まれて箱だらけになる） */
+/* 柱の左端にそろえる（記事の型の決まり → .entry）。幅を70chで中央に寄せていた頃は、本文・写真と左端がずれた */
+.ep-extra{margin:40px 0 0;color:var(--sumi-soft);font-size:15px;display:grid;gap:36px}
+.ep-extra p{margin:0}
+/* 共通の section の上下余白（トップの欄の間隔）を消す。ここの間隔は .ep-extra の gap だけで決める */
+.ep-extra section{padding:0}
+.ep-extra__label{font-family:var(--mincho);font-size:17px;font-weight:600;letter-spacing:var(--tr-head);color:var(--sumi);
+  margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+.ep-extra__items ul{list-style:none;margin:0;padding:0}
+.ep-extra__items li{padding:12px 0;border-bottom:1px solid var(--line)}
+/* 品名と価格は1行に並べ、価格は右端にそろえる（メニューの値段の並べ方） */
+.ep-extra__item-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:2px 16px;color:var(--sumi)}
+.ep-extra__item-name{font-weight:500}
+.ep-extra__item-price{font-variant-numeric:tabular-nums;white-space:nowrap}
+.ep-extra__item-desc{font-size:14px;margin-top:4px !important}
+.ep-extra__check{background:var(--panel);border-left:3px solid var(--indigo);padding:16px 20px}
+.ep-extra__check-label{font-size:12px;font-weight:700;letter-spacing:var(--tr-label);color:var(--indigo);margin-bottom:6px !important}
+@media(max-width:720px){
+  .ep-extra{margin-top:32px;gap:28px}
+}
+
 /* ---- 記事に埋め込んだスポット [ep_spot]（plugins/editplus-spot/article-spot.php） ----
    写真の下に1行の札（エリア｜ジャンル・名前・営業時間）と「詳しく見る」。
    カードを箱で囲まない。本文の途中で箱が続くと広告の枠に見える（誌面の店紹介も写真＋キャプションの組み） */
@@ -1982,6 +2245,10 @@ html[lang="zh-TW" i]{
   .quiz-sec--photo .q-head{font-size:24px}
   .quiz-sec--photo .quiz:not(.is-result){padding:26px 24px 29px}
 }
+/* 結果の白い帯の下に地の色が余って、次の欄との間が間延びしていた（2026-10-24）。
+   結果のときは帯で欄を閉じ、スマホの下の操作列も帯にくっつける（-1px で罫を1本に重ねる） */
+.quiz-sec--photo:has(.quiz.is-result){padding-bottom:0;border-bottom:0}
+.q-res--story .r-dock{margin-top:-1px}
 
 /* --- 特集（案B 全幅の写真に文字） --- */
 #feature.fx{position:relative;padding:0;min-height:clamp(560px,50vw,760px);display:flex;align-items:flex-end;color:#fff;
@@ -2287,3 +2554,19 @@ a.nb-plan-name:hover{color:var(--indigo)}
   .nb-results .nb-acts{grid-column:2;grid-row:3}
   .nb-more{display:block;width:100%}
 }
+
+/* ============ キーワード検索の底上げ（2026-10-16。inc/search-plus.php） ============ */
+/* 入力中の候補。形は /nearby/ の候補（.finder-suggest）にそろえる。8件が並ぶ高さを上限に、超えたら中でスクロール */
+.hero-search,.results-search{position:relative}
+.find-suggest{position:absolute;left:0;right:0;top:calc(100% + 1px);z-index:6;margin:0;padding:6px 0;list-style:none;text-align:left;
+  background:var(--card);border:1px solid var(--line);box-shadow:0 22px 40px -24px rgba(0,0,0,.28);
+  max-height:min(46vh,360px);overflow-y:auto;overscroll-behavior:contain}
+.find-suggest a{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:10px 16px;color:var(--sumi)}
+.find-suggest a:hover,.find-suggest .sel a{background:var(--panel)}
+.find-suggest .s-name{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+/* 特徴で探す（こんな場所）。絞り込みの下に1段 */
+.trait-chips{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px}
+.trait-chips-head{font-size:12px;letter-spacing:var(--tr-body);color:var(--sumi-faint)}
+.trait-chips .chips{gap:7px}
+.trait-chips .chip{padding:5px 13px}
+.trait-chips .chip.on{background:var(--indigo);border-color:var(--indigo);color:#fff}

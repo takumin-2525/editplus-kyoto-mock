@@ -684,3 +684,155 @@
 	}
 	schedule();
 })();
+
+/* ---------- キーワード検索の入力中の候補（2026-10-16。inc/search-plus.php の ③） ----------
+ * 候補の一覧（スポット名・エリア・ジャンル・探し方の言葉）は、検索欄に初めて触れたときに1回だけ読む。
+ * 絞り込みはブラウザの中だけで行い、1文字ごとにサーバーへ問い合わせない。
+ * 候補を選ぶとその先（スポットのページ・エリアの一覧など）へ飛ぶ。選ばずに Enter なら、いつもの検索。
+ * 入力欄は combobox、候補は listbox（/nearby/ の nearby.js と同じ作り）。 */
+(function () {
+	var inputs = document.querySelectorAll('input[data-suggest]');
+	if (!inputs.length || !window.fetch) { return; }
+
+	var MAX = 8;
+	var index = null;
+	var loading = null;
+
+	// サーバーの editplus_find_normalize() と同じそろえ方（全角半角・大文字小文字・ひらがな→カタカナ・空白と中黒を消す）
+	function norm(s) {
+		s = String(s || '');
+		if (s.normalize) { s = s.normalize('NFKC'); }
+		s = s.toLowerCase().replace(/[ぁ-ゖ]/g, function (c) {
+			return String.fromCharCode(c.charCodeAt(0) + 0x60);
+		});
+		return s.replace(/[ヶ]/g, 'ケ').replace(/[ヵ]/g, 'カ').replace(/[\s・･]/g, '');
+	}
+
+	function load(url) {
+		if (index) { return Promise.resolve(index); }
+		if (!loading) {
+			loading = fetch(url, { credentials: 'omit' })
+				.then(function (r) {
+					if (!r.ok) { throw new Error('suggest ' + r.status); }
+					return r.json();
+				})
+				.then(function (d) { index = (d && d.items) || []; return index; })
+				.catch(function () { loading = null; return []; });
+		}
+		return loading;
+	}
+
+	// 並び: 頭から一致 → 途中で一致。同じなら一覧の順（探し方 → エリア・ジャンル → スポット）
+	function match(q) {
+		var head = [], mid = [];
+		for (var i = 0; i < index.length && head.length < MAX; i++) {
+			var keys = String(index[i].n || '').split('|');
+			var at = -1;
+			for (var k = 0; k < keys.length; k++) {
+				var p = keys[k].indexOf(q);
+				if (p !== -1 && (at === -1 || p < at)) { at = p; }
+			}
+			if (at === 0) { head.push(index[i]); }
+			else if (at > 0 && mid.length < MAX) { mid.push(index[i]); }
+		}
+		return head.concat(mid).slice(0, MAX);
+	}
+
+	Array.prototype.forEach.call(inputs, function (input) {
+		var list = document.getElementById(input.getAttribute('aria-controls'));
+		if (!list) { return; }
+		var found = [];
+		var sel = -1;
+		var timer = null;
+
+		function close() {
+			list.hidden = true;
+			list.innerHTML = '';
+			input.setAttribute('aria-expanded', 'false');
+			input.removeAttribute('aria-activedescendant');
+			found = [];
+			sel = -1;
+		}
+		function mark() {
+			var items = list.querySelectorAll('li[role="option"]');
+			Array.prototype.forEach.call(items, function (li, i) {
+				li.classList.toggle('sel', i === sel);
+				li.setAttribute('aria-selected', i === sel ? 'true' : 'false');
+			});
+			if (sel >= 0 && items[sel]) { input.setAttribute('aria-activedescendant', items[sel].id); }
+			else { input.removeAttribute('aria-activedescendant'); }
+		}
+		function render(items) {
+			close();
+			if (!items.length) { return; }
+			found = items;
+			items.forEach(function (o, i) {
+				var li = document.createElement('li');
+				li.id = list.id + 'Opt' + i;
+				li.setAttribute('role', 'option');
+				li.setAttribute('aria-selected', 'false');
+				var a = document.createElement('a');
+				a.href = o.u;
+				a.tabIndex = -1; // 候補へは矢印キーで移る。タブキーの順番に候補を挟まない
+				var t = document.createElement('span');
+				t.className = 's-name';
+				t.textContent = o.t;
+				a.appendChild(t);
+				if (o.m) {
+					var m = document.createElement('span');
+					m.className = 's-area';
+					m.textContent = o.m;
+					a.appendChild(m);
+				}
+				li.appendChild(a);
+				list.appendChild(li);
+			});
+			list.hidden = false;
+			input.setAttribute('aria-expanded', 'true');
+			// 候補が画面の下にはみ出すなら、はみ出した分だけページを上げる（nearby.js と同じ）。
+			// キーボードが出ているスマホでは visualViewport で測り、入力欄が固定ヘッダーの下に隠れるところまでは上げない
+			var vv = window.visualViewport;
+			var seen = vv ? vv.offsetTop + vv.height : window.innerHeight;
+			var over = list.getBoundingClientRect().bottom + 12 - seen;
+			var head = document.querySelector('.site-header');
+			var room = input.getBoundingClientRect().top - (head ? head.getBoundingClientRect().bottom : 0) - 12;
+			if (over > 0 && room > 0) { window.scrollBy(0, Math.min(over, room)); }
+		}
+		function update() {
+			var q = norm(input.value);
+			if (!q) { close(); return; }
+			load(input.getAttribute('data-suggest')).then(function () {
+				if (norm(input.value) !== q || !index) { return; } // 読み込み中に打ち進んでいたら、新しいほうに任せる
+				render(match(q));
+			});
+		}
+
+		// 触れた時点で読み始める（打ち始めたときには届いていることが多い）
+		input.addEventListener('focus', function () { load(input.getAttribute('data-suggest')); }, { once: true });
+		input.addEventListener('input', function () {
+			clearTimeout(timer);
+			timer = setTimeout(update, 60);
+		});
+		input.addEventListener('keydown', function (e) {
+			var n = list.hidden ? 0 : found.length;
+			if (e.key === 'Escape') {
+				if (n) { e.preventDefault(); close(); }
+				return;
+			}
+			if (!n) { return; }
+			if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+				e.preventDefault();
+				sel = e.key === 'ArrowDown' ? (sel + 1) % n : (sel <= 0 ? n - 1 : sel - 1);
+				mark();
+			} else if (e.key === 'Enter' && sel >= 0) {
+				e.preventDefault();
+				window.location.href = found[sel].u;
+			}
+		});
+		// 候補の外を押したら閉じる。候補のリンクを押したときは、閉じる前に飛ぶ（mousedown で閉じない）
+		document.addEventListener('click', function (e) {
+			if (e.target !== input && !list.contains(e.target)) { close(); }
+		});
+		input.form && input.form.addEventListener('submit', close);
+	});
+})();
