@@ -16,13 +16,20 @@
 		onScroll();
 	}
 
-	// --- ヘッダーのナビ：トップの各セクションへのリンクが1行に入らなければ、≡（引き出し）に任せる ---
+	// --- ヘッダーのナビ：1行に入らないリンクは、≡（引き出し）に任せる ---
 	// 入るかどうかは言語と、トップに出ている枠の数で変わるので、CSSの幅決め打ちではなく実測する。
-	// 測るときは一度リンクを出した状態に戻す（隠したままだと、広げても戻らない）
+	// 測るときは一度リンクを出した状態に戻す（隠したままだと、広げても戻らない）。
+	// 入らない分だけ後ろ（イベント・催事など、あとから足した入口）から隠す（2026-10-26）。以前は1つでもはみ出すと
+	// nav-sec を全部隠していて、イベントの入口を足しただけで、幅1024pxの日本語から「スポットを探す」まで消えた
 	var mainNav = header ? header.querySelector('nav.main') : null;
 	if (mainNav && mainNav.querySelector('.nav-sec')) {
 		var fitNav = function () {
+			var secs = Array.prototype.slice.call(mainNav.querySelectorAll('.nav-sec'));
 			header.classList.remove('nav-compact');
+			secs.forEach(function (a) { a.classList.remove('is-cut'); });
+			for (var i = secs.length - 1; i >= 0 && mainNav.scrollWidth > mainNav.clientWidth + 1; i--) {
+				secs[i].classList.add('is-cut');
+			}
 			if (mainNav.scrollWidth > mainNav.clientWidth + 1) {
 				header.classList.add('nav-compact');
 			}
