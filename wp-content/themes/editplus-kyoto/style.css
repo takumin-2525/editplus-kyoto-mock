@@ -3,7 +3,7 @@ Theme Name: EditPlus Kyoto Concierge
 Theme URI: https://github.com/takumin-2525/editplus-web-renewal
 Author: 高速オフセット / 株式会社エディットプラス
 Description: 京都・大阪観光コンシェルジュ リニューアル用の自作テーマ。60_デザイン/kyoto-concierge-rough.html のデザインを再現。
-Version: 0.9.95
+Version: 0.9.97
 Requires at least: 6.0
 Requires PHP: 8.0
 Text Domain: editplus-kyoto
@@ -2660,3 +2660,131 @@ a.nb-plan-name:hover{color:var(--indigo)}
 /* 一覧（/topics/）・1件のページのリンク先 */
 .topics-main .pagination{margin-top:40px}
 .topic-out{margin:40px 0 0}
+
+/* ============ イベント・催事（2026-10-26。inc/events.php・assets/js/events.js） ============
+   行はトピックスの行（.topic*）をそのまま使い、イベントだけの部分を .ev-* で足す。
+   ・題名の下の1行目は開催期間（催しで知りたいのは「いつ開いているか」）。2行目に種類（色の印）と会場
+   ・写真の無いイベントは、トピックスの「種類と日付の面」と同じ枠に、種類と期間を組む。1日だけなら曜日と月日を大きく、
+     会期なら初めと終わりの月日を2段に（数字は枠の幅で伸び縮みする cqw）
+   ・切り替え（トップの今日・明日・明後日／一覧の開催中・今後）は、地の上の文字と下線だけ。箱やボタンの形にしない
+     （トップのほかの欄と同じ「見出し＋罫＋行」の調子のまま、日付だけが動く） */
+:is(.ev-tabs,.ev-cal,.ev-empty,.ev-more,.ev-last,.ev-clear,.ev-sec,.ev-status)[hidden]{display:none}
+.ev-nowrap{white-space:nowrap}
+
+/* 行（期間・種類・会場） */
+.ev-when{margin:8px 0 0;font-size:13px;line-height:1.6;letter-spacing:var(--tr-meta);color:var(--sumi);font-variant-numeric:tabular-nums}
+.ev-last{display:inline-block;margin-right:8px;font-size:10px;font-weight:700;line-height:18px;letter-spacing:.08em;padding:0 6px;color:#fff;background:var(--shu);vertical-align:.1em}
+.ev-meta{margin-top:4px}
+.ev-venue{color:var(--sumi-soft);letter-spacing:var(--tr-meta);overflow-wrap:anywhere}
+
+/* 写真の無いイベントの面。種類の名前はトピックスの種類より長い（「ライトアップ・夜間拝観」）ので、字間を詰め、
+   スマホの小さな面でも省略（…）にならない大きさまで縮める */
+.ev-plate .topic-plate__kind{font-size:clamp(9px,6cqw,13px);letter-spacing:.03em}
+/* 会期の面。初めの月日の下に、ダッシュを添えた終わりの月日 */
+.ev-plate__span{display:flex;flex-direction:column;line-height:1;gap:2cqw}
+.ev-plate__d{font-size:17cqw;font-weight:500;letter-spacing:.01em;font-variant-numeric:tabular-nums}
+/* 「–」の字は書体によって太いマイナスに見えた（「−11.20」）。字ではなく細い線で描く */
+.ev-plate__d--to::before{content:"";display:inline-block;width:.4em;height:max(1px,.055em);margin-right:.14em;background:currentColor;vertical-align:.3em;opacity:.8}
+
+/* トップ：今日・明日・明後日。PCでは1つの幅を決めて左に寄せる（3等分すると1つが380pxに広がり、日付が遠のく） */
+.ev-days{display:grid;grid-template-columns:repeat(3,minmax(0,200px));border-bottom:1px solid var(--rule);margin:4px 0 0}
+/* 中身は下に寄せる。スペイン語の「Pasado mañana」のように名前が2行に折れても、日付の行は3つともそろう */
+.ev-days__tab{display:flex;flex-direction:column;justify-content:flex-end;gap:3px;padding:12px 12px 13px 0;margin-bottom:-1px;border-bottom:2px solid transparent;color:var(--sumi-faint);transition:color .2s}
+.ev-days__tab:hover{color:var(--sumi)}
+.ev-days__tab.is-on{color:var(--sumi);border-bottom-color:var(--sumi)}
+.ev-days__tab:focus-visible{outline:2px solid var(--indigo);outline-offset:-2px}
+.ev-days__rel{font-size:17px;font-weight:600;line-height:1.35;letter-spacing:var(--tr-head);text-wrap:balance}
+.ev-days__date{font-size:12.5px;line-height:1.5;letter-spacing:var(--tr-meta);font-variant-numeric:tabular-nums}
+/* 切り替えの下罫があるので、行の頭の罫は引かない（2本が近くに並んで見える） */
+.ev-day > .topic-list > .topic:first-child{border-top:0}
+@media(min-width:1024px){.ev-day > .topic-list > .topic:nth-child(2){border-top:0}}
+.ev-empty{margin:0;padding:26px 0;border-bottom:1px solid var(--rule);font-size:14px;line-height:1.8;letter-spacing:var(--tr-body);color:var(--sumi-soft)}
+.ev-empty a,.ev-more a{color:var(--sumi);text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:.3em;white-space:nowrap}
+.ev-empty a:hover,.ev-more a:hover{text-decoration-color:currentColor}
+.ev-more{margin:18px 0 0;font-size:13px;letter-spacing:var(--tr-body)}
+.ev-more a::after{content:" →"}
+
+/* 一覧（/events/）。PCはカレンダーを左の細い柱に止め、右の一覧と同時に見せる。スマホは縦に1本 */
+.ev-layout{display:grid;grid-template-columns:minmax(0,1fr);gap:30px}
+/* JS が無いとカレンダーを出さない。空の柱のぶんの空きを残さない */
+.ev-side:has(> .ev-cal[hidden]){display:none}
+@media(min-width:1024px){
+  .ev-layout{grid-template-columns:300px minmax(0,1fr);column-gap:56px;align-items:start}
+  .ev-side{position:sticky;top:calc(75px + 24px)}
+  /* 右の柱は幅が狭い（約780px）ので、行は1列（2列だと題名の欄が190pxまで縮む） */
+  .ev-main .topic-list{grid-template-columns:minmax(0,1fr)}
+  .ev-main .topic-list > .topic:nth-child(2){border-top:0}
+}
+.ev-tabs{display:flex;flex-wrap:wrap;border-bottom:1px solid var(--rule)}
+.ev-tabs__tab{appearance:none;background:none;border:0;border-bottom:2px solid transparent;margin:0 22px -1px 0;padding:10px 0 12px;font:inherit;font-size:16px;font-weight:600;
+  line-height:1.4;letter-spacing:var(--tr-head);color:var(--sumi-faint);cursor:pointer;transition:color .2s}
+.ev-tabs__tab:hover{color:var(--sumi)}
+.ev-tabs__tab[aria-selected="true"]{color:var(--sumi);border-bottom-color:var(--sumi)}
+.ev-tabs__tab:focus-visible{outline:2px solid var(--indigo);outline-offset:2px}
+.ev-tabs__n{margin-left:8px;font-size:12px;font-weight:500;letter-spacing:var(--tr-meta);color:var(--sumi-faint);font-variant-numeric:tabular-nums}
+.ev-note{margin:12px 0 0;font-size:12.5px;line-height:1.75;letter-spacing:var(--tr-body);color:var(--sumi-faint)}
+.ev-sec{padding:0;margin-top:22px}
+.ev-sec + .ev-sec{margin-top:44px}
+.ev-sec__head{display:flex;align-items:baseline;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;margin:0 0 12px}
+.ev-sec__ttl{margin:0 0 12px;font-size:18px;font-weight:600;line-height:1.5;letter-spacing:var(--tr-head);color:var(--sumi)}
+.ev-sec__head .ev-sec__ttl{margin:0}
+/* JS で切り替えにしたら、切り替えが見出しの代わり（読み上げには残す） */
+.is-js .ev-sec__ttl--tab{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);border:0}
+.is-js .ev-sec{margin-top:6px}
+/* 日を選んだときの一覧は、注記のすぐ下だと注記の続きに見えたので、見出しの上を空ける */
+.is-js .ev-sec--day{margin-top:30px}
+.ev-clear{appearance:none;background:none;border:0;padding:0;font:inherit;font-size:13px;letter-spacing:var(--tr-body);color:var(--sumi-soft);cursor:pointer;
+  text-decoration:underline;text-decoration-color:var(--rule);text-underline-offset:.3em}
+.ev-clear:hover{color:var(--sumi);text-decoration-color:currentColor}
+
+/* カレンダー。日曜はじまり（日本の暦の並び）。イベントのある日だけ押せる（数字を濃く、下に朱の小さな四角）。
+   上の罫は見出しの下の罫（.rule）が兼ねる（自分でも引くと、近くに2本並んで見えた） */
+.ev-cal__head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
+.ev-cal__ttl{margin:0;font-size:18px;font-weight:600;line-height:1.4;letter-spacing:var(--tr-head);text-align:center;font-variant-numeric:tabular-nums}
+.ev-cal__nav{display:grid;place-items:center;width:40px;height:40px;padding:0;border:1px solid var(--line);background:var(--card);color:var(--sumi);cursor:pointer;transition:border-color .2s}
+.ev-cal__nav:hover{border-color:var(--sumi)}
+.ev-cal__nav:disabled{color:var(--sumi-mute);border-color:var(--line);cursor:default;opacity:.45}
+.ev-cal__nav:focus-visible{outline:2px solid var(--indigo);outline-offset:2px}
+.ev-cal__grid{width:100%;border-collapse:collapse;table-layout:fixed}
+.ev-cal__grid th{padding:6px 0 8px;font-size:11px;font-weight:500;letter-spacing:var(--tr-meta);color:var(--sumi-faint);text-align:center}
+.ev-cal__grid th.is-sun{color:var(--shu)}
+.ev-cal__grid th.is-sat{color:var(--indigo-soft)}
+.ev-cal__grid td{padding:1px;text-align:center}
+.ev-cal__day{position:relative;display:flex;align-items:center;justify-content:center;width:100%;max-width:46px;aspect-ratio:1;margin:0 auto;padding:0;border:0;background:none;
+  font:inherit;font-size:14px;line-height:1;color:var(--sumi-mute);font-variant-numeric:tabular-nums}
+button.ev-cal__day{color:var(--sumi);font-weight:700;cursor:pointer;transition:background .15s}
+button.ev-cal__day:hover{background:var(--panel)}
+button.ev-cal__day.is-past{color:var(--sumi-faint)}
+.ev-cal__day:focus-visible{outline:2px solid var(--indigo);outline-offset:0}
+.ev-cal__dot{position:absolute;left:50%;bottom:16%;width:5px;height:5px;margin-left:-2.5px;background:var(--shu)}
+.ev-cal__day.is-today{box-shadow:inset 0 0 0 1px var(--sumi)}
+button.ev-cal__day.is-on{background:var(--indigo);color:#fff}
+.ev-cal__day.is-on .ev-cal__dot{background:#fff}
+
+/* 1件のページ。題名のすぐ下に、状態と開催期間を大きく（罫で挟む） */
+.ev-big{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin:-14px 0 34px;padding:16px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.ev-big__period{margin:0;font-size:clamp(19px,2.3vw,23px);font-weight:600;line-height:1.55;letter-spacing:var(--tr-head);color:var(--sumi);font-variant-numeric:tabular-nums}
+.ev-status{display:inline-block;flex:none;padding:0 9px;font-size:12px;font-weight:700;line-height:24px;letter-spacing:var(--tr-meta);color:#fff;background:var(--sumi)}
+.ev-status--ongoing{background:var(--shu)}
+.ev-status--soon{background:var(--indigo)}
+.ev-status--ended{background:none;color:var(--sumi-faint);box-shadow:inset 0 0 0 1px var(--rule)}
+.ev-facts{margin:0}
+.ev-facts__links{display:flex;flex-wrap:wrap;gap:0 18px;margin-top:2px;font-size:13px;line-height:2;letter-spacing:var(--tr-body)}
+.ev-facts__links a::after{content:" →";text-decoration:none}
+.ev-out{margin:30px 0 0}
+.ev-out__btn::after{content:" ↗";letter-spacing:0}
+.ev-out .ev-note{margin-top:14px}
+.ev-body{margin-top:44px}
+.ev-entry + .related{margin-top:88px}
+
+@media(max-width:840px){
+  .ev-when{margin-top:5px;font-size:12px}
+  .ev-last{margin-right:6px}
+  .ev-days{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .ev-days__tab{padding:10px 8px 11px 0}
+  .ev-days__rel{font-size:15px}
+  .ev-days__date{font-size:11px;letter-spacing:.04em}
+  .ev-empty{padding:20px 0;font-size:13px}
+  .ev-tabs__tab{font-size:15px;margin-right:18px}
+  .ev-big{margin:-8px 0 26px;padding:14px 0}
+}
