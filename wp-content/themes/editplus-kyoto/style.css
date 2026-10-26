@@ -3,7 +3,7 @@ Theme Name: EditPlus Kyoto Concierge
 Theme URI: https://github.com/takumin-2525/editplus-web-renewal
 Author: 高速オフセット / 株式会社エディットプラス
 Description: 京都・大阪観光コンシェルジュ リニューアル用の自作テーマ。60_デザイン/kyoto-concierge-rough.html のデザインを再現。
-Version: 0.9.88
+Version: 0.9.93
 Requires at least: 6.0
 Requires PHP: 8.0
 Text Domain: editplus-kyoto
@@ -26,7 +26,9 @@ Text Domain: editplus-kyoto
 :root{
   /* 地の色は、2026-10-26 に「一旦背景を白く」（野口）で和紙 #eff0ec から白にした。戻すときはこの1か所を #eff0ec に */
   --washi:#ffffff; --panel:#f7f8f5; --card:#ffffff;
-  --sumi:#191b18; --sumi-soft:#4f544c; --sumi-faint:#666b63; --sumi-mute:#8b9088;
+  /* 2026-10-26「文字薄くない？見えにくいところは変えて」（野口）。地を白・書体をゴシックにした日に、細いゴシックと灰の文字が
+     薄く見えたので、soft と faint を一段ずつ濃くした（soft #4f544c → #383c35、faint #666b63 → #4f544c）。白の上で soft 11.0・faint 7.8 */
+  --sumi:#191b18; --sumi-soft:#383c35; --sumi-faint:#4f544c; --sumi-mute:#8b9088;
   /* 墨の4段（2026-09-16 に見直し。カードの地を白から和紙にした日に、上2段が地に溶けた）
      → 60_デザイン/2026-09-16_カードの文字が薄い件.md
      --sumi       見出し。和紙の上で 15.15
@@ -35,14 +37,19 @@ Text Domain: editplus-kyoto
      --sumi-faint 日付・注記・パンくず。#8b9088 は和紙の上で 2.85 しかなく読めなかった
                   → #666b63(和紙4.77 / 白5.46)。soft より淡いので段差は残る
      --sumi-mute  「押せない」ことを示すための薄さ。無効な部品は基準の対象外なので旧色のまま */
-  --line:#dde1da; --rule:#d4d4cb; --indigo:#33436a; --indigo-soft:#5c6a94; --gold:#9a8348; --gold-ink:#7d6a3a;
+  --line:#dde1da; --rule:#d4d4cb; --indigo:#33436a; --indigo-soft:#48557f; --gold:#9a8348; --gold-ink:#66562c;
   /* クーポンだけの色（2026-10-01）。店頭で見せる枠なので、ほかの欄と違って一目で分かる必要がある。
      以前のサイトの「朱の点線＋卵色の地」を、このサイトの墨と和紙に合う濃さに落とした。
      --shu は卵色の上で 6.8、和紙の上で 6.4（本文の大きさでも基準を満たす） */
   --shu:#9a3324; --tamago:#fbf6e2;
-  --mincho:"EP Yakumono","Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",YuMincho,"Songti SC",serif;
+  /* 書体は、2026-10-26 に「文字はゴシックに」（野口）で全部ゴシックにした。見出しの明朝（--mincho）と欧文の数字・ラベル（--serif）は
+     名前を残したまま、中身を本文のゴシックにしてある（テンプレートと CSS の書き換えを1か所で済ませ、戻すのも1か所で済むように）。
+     戻すときの元の値: --mincho:"EP Yakumono","Shippori Mincho B1","Hiragino Mincho ProN","Yu Mincho",YuMincho,"Songti SC",serif;
+                      --serif:"Cormorant Garamond","Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+     （下の言語ごとの3か所と、functions.php の editplus_fonts_url() も一緒に戻す） */
   --gothic:"Zen Kaku Gothic New","Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic Medium","Noto Sans JP",system-ui,sans-serif;
-  --serif:"Cormorant Garamond","Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  --mincho:var(--gothic);
+  --serif:var(--gothic);
   /* 字間は5段だけ（2026-09-21）。98箇所・21種類の letter-spacing が散っていて、どこを見ても
      同じ「字間を広げた組み」に見えるのが既視感の芯だった。大きい字ほど詰める（光学的補正）。
      段を足したくなったら、まず既存の段で足りない理由を書くこと
@@ -51,23 +58,24 @@ Text Domain: editplus-kyoto
 }
 /* 中国語・韓国語は前と同じ OS 標準の書体（理由は上の「書体」）。functions.php は Web フォントの読み込み自体を省く */
 html[lang^="zh"],html[lang^="ko"]{
-  --mincho:"Hiragino Mincho ProN","Yu Mincho",YuMincho,"Songti SC",serif;
+  --mincho:var(--gothic);
   --gothic:"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic Medium","Noto Sans JP",system-ui,sans-serif;
-  --serif:"Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  --serif:var(--gothic);
 }
 /* 英語・スペイン語は、和文の2書体に無い字を、和文の端末の書体より先に欧文の端末の書体で出す（2026-10-08 手直し）。
    長音つきの母音（ō ū。「Chōhō-ji」「Shijō Kawaramachi」）はしっぽり明朝にも Zen Kaku Gothic にも入っておらず、
    その1字だけヒラギノで出ていた（ヒラギノの ō は幅が広く、語の中で浮く）。欧文の書体の ō なら、前後の字と幅がそろう。
    Web フォントにある字（ふつうの英字・かな・漢字）の見え方は変わらない */
 html[lang^="en"],html[lang^="es"]{
-  --mincho:"EP Yakumono","Shippori Mincho B1","Iowan Old Style","Palatino Linotype",Palatino,Georgia,"Hiragino Mincho ProN","Yu Mincho",YuMincho,"Songti SC",serif;
+  --mincho:var(--gothic);
   --gothic:"Zen Kaku Gothic New","Helvetica Neue",Helvetica,Arial,"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic Medium","Noto Sans JP",system-ui,sans-serif;
 }
 /* ダークモードは出さない（2026-09-11 定例で廃止に合意。端末の設定に関わらず和紙の地で見せる） */
 
 /* ============ base ============ */
 *{box-sizing:border-box}
-body{margin:0;background:var(--washi);color:var(--sumi);font-family:var(--gothic);line-height:1.7;-webkit-font-smoothing:antialiased}
+/* 文字の太さは 500（2026-10-26）。ゴシックの 400 は白い地の上で細く、灰の文字ほど薄く見えた（野口「文字薄くない？」） */
+body{margin:0;background:var(--washi);color:var(--sumi);font-family:var(--gothic);font-weight:500;line-height:1.7;-webkit-font-smoothing:antialiased}
 /* 横方向のはみ出しはページを横スクロールさせない（スマホで「横にスライドできてしまう」のを構造的に止める）。
    clip はスクロール領域を作らないので、position:sticky 等に影響しない。はみ出し自体は各所で直す前提の最後の砦 */
 html,body{overflow-x:clip} /* iOSのSafariは html だけだと横に動くことがあるので body にも */
@@ -114,8 +122,16 @@ a:hover .imgwrap img{transform:scale(1.06)}
 .hbar{display:flex;align-items:center;gap:44px;height:74px}
 /* ナビが混んでもロゴは縮めない（縮むと2行に折れる）。入りきらない分はナビ側が ≡ に切り替わる */
 .brand{display:flex;flex-direction:column;line-height:1.15;flex:none}
+/* 公式ロゴ（2026-10-26。assets/images/logo.svg は野口さんから届いた .ai を横組みにしたもの）。
+   文字の色（currentColor）をロゴの形で切り抜いて出す（mask）。写真の上のヘッダーでは白、地の上では墨、フッターでは明るい色に、
+   1枚の絵で追従させるため。縦横比は logo.svg の viewBox と同じ。ロゴを差し替えたら ?v= を上げる */
+.brand-logo{display:block;flex:none;aspect-ratio:887.3/146.8;height:38px;background:currentColor;
+  -webkit-mask:url(assets/images/logo.svg?v=1) no-repeat left center/contain;mask:url(assets/images/logo.svg?v=1) no-repeat left center/contain;width:auto}
+.mnav-brand.brand-logo{height:24px;color:var(--sumi)}
+.fbrand.brand-logo{height:44px;margin-bottom:6px;color:var(--ft-ink)}
+@media(max-width:840px){.site-header .brand-logo{height:27px}.fbrand.brand-logo{height:34px}}
 .brand .jp{font-family:var(--mincho);font-size:20px;letter-spacing:.16em;font-weight:600}
-.brand .en{font-family:var(--serif);font-size:9.5px;letter-spacing:.36em;opacity:.72;text-transform:uppercase;margin-top:3px}
+.brand .en{font-family:var(--serif);font-size:9.5px;letter-spacing:.36em;opacity:.9;text-transform:uppercase;margin-top:3px}
 /* 英語・スペイン語はサイト名も項目も長く、日本語より100〜300px幅を食う（EN 315px / ES 396px vs JA 254px）。
    そのままだと app.js の「1行に入らなければ ≡ に逃がす」が PC 幅でも効いて、EN/ES だけ項目が消えた（2026-09-17）。
    ロゴを一回り小さく・字間を詰め、ナビの間隔も詰めて、日本語と同じ幅で1行に収める */
@@ -134,12 +150,12 @@ html[lang^="en"] .brand .en{display:none} /* 英語では上の行と同じ文�
    言語の地球・ハンバーガーと縦線が近くで3つ並んで、ヘッダーが騒がしくなるだけだった。
    flex:1 と min-width:0 は、1行に入らないことを app.js が scrollWidth で測れるようにするため */
 nav.main{display:flex;align-items:center;gap:24px;font-size:14px;letter-spacing:var(--tr-head);flex:1 1 auto;min-width:0;overflow:hidden;white-space:nowrap}
-nav.main a{opacity:.82;transition:opacity .2s}
+nav.main a{opacity:1;transition:opacity .2s} /* 以前は .82 で透かしていたが、白い地の上で薄く見えた（2026-10-26） */
 /* 1行に入らない幅（言語・トップに出ている枠の数で変わる）では、セクションは引き出しに任せて ≡ を出す。
    付け外しは app.js。幅の決め打ち（@media）にしないのは、スペイン語で枠が多い日と日本語とで200px以上違うから */
 .site-header.nav-compact nav.main .nav-sec{display:none}
 .site-header.nav-compact .menu-btn{display:inline-flex;margin-left:0}
-nav.main a:hover{opacity:1}
+nav.main a:hover{opacity:.7}
 
 /* 言語スイッチャー（今いる言語だけを出し、押すと候補が開く）
    閉じたときの色はヘッダー依存（ヒーロー上は白、solidでは墨）。
@@ -207,7 +223,7 @@ nav.main a:hover{opacity:1}
   margin:0;line-height:1.24;text-shadow:0 2px 30px rgba(0,0,0,.4)}
 /* 見出し下の説明。英字の飾り文（大文字・字間広め）から、読める日本語の1文に変えた。
    ゴシック・字間控えめ・行間広めで、見出しの明朝と役割を分ける */
-.hsub{font-family:var(--gothic);font-size:clamp(14px,1.45vw,16px);letter-spacing:var(--tr-body);line-height:1.9;opacity:.92;
+.hsub{font-family:var(--gothic);font-size:clamp(14px,1.45vw,16px);letter-spacing:var(--tr-body);line-height:1.9;opacity:1;
   max-width:36em;margin:22px 0 0}
 /* PC では 19px（2026-10-08 野口）。16px では、76px の見出しの下で注記のように小さく見えた。スマホ（840px 以下）は今までどおり */
 @media(min-width:841px){.hsub{font-size:19px}}
@@ -1331,7 +1347,7 @@ html.st-lock,html.st-lock body{overflow:hidden}
 .qr .scrim{position:absolute;inset:0;background:linear-gradient(90deg,rgba(20,25,45,.9),rgba(20,25,45,.62))}
 .qr .inner{position:relative;z-index:2}
 .qr h3{font-family:var(--mincho);font-size:clamp(21px,2.6vw,28px);letter-spacing:var(--tr-meta);margin:0 0 8px;font-weight:600}
-.qr p{margin:0;opacity:.9;font-size:14px;max-width:52ch}
+.qr p{margin:0;opacity:1;font-size:14px;max-width:52ch}
 .qr .eyebrow{margin-bottom:12px}
 
 /* ============ footer ============ */
@@ -1339,7 +1355,7 @@ html.st-lock,html.st-lock body{overflow:hidden}
    地は墨の濃い色（2026-10-07「フッターの背景色濃くして他のコンテンツと差別化したい」）。
    和紙の地に罫線1本だけでは本文の続きに見えた。藍ではなく墨にしたのは、トップの最後の帯（.qr）が藍の幕で、続けると1枚に見えるため。
    文字の色は墨の地の上の比：名乗り・リンク 14.0／説明 9.3／見出しの金 8.0／著作権・言語 6.6（どれも本文の基準 4.5 を満たす） */
-.site-footer{--ft-bg:#1f211d;--ft-ink:#efeee8;--ft-soft:#c3c5bd;--ft-faint:#a3a79d;--ft-gold:#c9b47a;--ft-line:rgba(255,255,255,.14);
+.site-footer{--ft-bg:#1f211d;--ft-ink:#efeee8;--ft-soft:#d6d8d1;--ft-faint:#c0c3ba;--ft-gold:#c9b47a;--ft-line:rgba(255,255,255,.14);
   background:var(--ft-bg);padding:80px 0 36px;color:var(--ft-soft)}
 .site-footer a:focus-visible{outline:2px solid var(--ft-ink);outline-offset:2px}
 .ftop{display:flex;gap:80px;align-items:flex-start}
@@ -1524,7 +1540,7 @@ body.error404 .page-main{flex:1 0 auto}
 /* ============ 言語（スマホ）：ヘッダーのボタン＋下から上がるシート ============
    引き出しの奥に置くと見つからないので、≡ の左に常時出す。記号はPCと同じ地球の線画 */
 .lang-btn{display:none;align-items:center;gap:7px;background:none;border:0;padding:6px 4px;cursor:pointer;color:inherit;
-  font-family:var(--gothic);font-size:13px;letter-spacing:var(--tr-body);margin-left:auto;opacity:.9}
+  font-family:var(--gothic);font-size:13px;letter-spacing:var(--tr-body);margin-left:auto;opacity:1}
 .lang-btn+.menu-btn{margin-left:10px}
 .lsheet{position:fixed;inset:0;z-index:55;visibility:hidden;pointer-events:none;transition:visibility 0s linear .5s}
 .lsheet.open{visibility:visible;pointer-events:auto;transition-delay:0s}
@@ -2149,11 +2165,11 @@ body.is-book-full{overflow:hidden}
 /* 中国語の明朝の見出し: 先頭のヒラギノ明朝に無い簡体字（谁・查・礼）だけが後ろの宋体で描かれ、1つの見出しで字の形と高さが
    そろわなかった（2026-10-03 テスト）。その言語の字が全部ある明朝（宋体）を先にする。ゴシックも同じ考えで、その言語の書体を先に */
 html[lang="zh-CN" i]{
-  --mincho:"Songti SC","STSong","Noto Serif SC","SimSun",serif;
+  --mincho:var(--gothic);
   --gothic:"PingFang SC","Hiragino Sans GB","Noto Sans SC","Microsoft YaHei",system-ui,sans-serif;
 }
 html[lang="zh-TW" i]{
-  --mincho:"Songti TC","LiSong Pro","Noto Serif TC","PMingLiU",serif;
+  --mincho:var(--gothic);
   --gothic:"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;
 }
 /* /nearby/ の「位置情報を使わないときは」は h2（ページの見出しの段）。/hotel/ の同じ箱の h3 にしか書体が当たっておらず、
@@ -2268,7 +2284,7 @@ html[lang="zh-TW" i]{
 .fx-lead{font-size:15px;line-height:1.9;max-width:28em;margin:0}
 .fx-links{display:flex;align-items:baseline;gap:28px;padding-top:10px}
 .fx-read{font-family:var(--mincho);font-size:14px;letter-spacing:var(--tr-label);padding-bottom:6px;border-bottom:1px solid #fff}
-.fx-more{font-size:13px;letter-spacing:var(--tr-head);opacity:.85}
+.fx-more{font-size:13px;letter-spacing:var(--tr-head);opacity:1}
 .fx-read:hover,.fx-more:hover{opacity:.75}
 @media(max-width:840px){
   #feature.fx{min-height:560px}
@@ -2570,3 +2586,75 @@ a.nb-plan-name:hover{color:var(--indigo)}
 .trait-chips .chips{gap:7px}
 .trait-chips .chip{padding:5px 13px}
 .trait-chips .chip.on{background:var(--indigo);border-color:var(--indigo);color:#fff}
+
+/* ============ トピックス（2026-10-26。inc/topics.php） ============
+   トップの欄・/topics/・1件のページの下で同じ行を使う。るるぶ&more の「最近の記事」の組み（左に写真・右に題名と種類と日付・
+   行を細い罫で区切る）を、このサイトの白い地・ゴシック・細い罫に合わせたもの。
+   ・PCは2列（行が2本ずつ並ぶ）。サイドバーの無い幅1140pxで1列にすると、1行の題名が長く伸びて右が空く。
+     2列にすると1列の幅（542px）が、参考の「最近の記事」の列とほぼ同じになる
+   ・写真の枠は 16:10 で、写真の有無にかかわらず同じ大きさ・同じ位置。行の高さと題名の左端が、写真なしの行でもそろう
+   ・写真の無い行は、その枠に種類の名前と日付を大きな数字で組んだ面を置く（.topic-plate）。面の色は種類ごと（.topic--tone-N）。
+     同じ色の小さな印を、行の種類の名前の前にも付ける（写真のある行でも、色で種類が分かるように）
+   ・題名は3行まで。PCでは3行でも写真の高さに収まる */
+.topic-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:minmax(0,1fr)}
+.topic{position:relative;display:grid;grid-template-columns:clamp(120px,40%,216px) minmax(0,1fr);column-gap:22px;align-items:start;
+  padding:22px 0;border-bottom:1px solid var(--rule)}
+.topic:first-child{border-top:1px solid var(--rule)}
+/* 一覧・1件のページでは見出しの下に罫（.rule）があるので、行の頭の罫は引かない（2本が近くに並んで見える）。
+   罫の下の空き（36px）に行の上の余白が足されて間延びするので、そのぶん詰める */
+.rule + .topic-list{margin-top:-22px}
+.rule + .topic-list > .topic:first-child{border-top:0}
+@media(min-width:1024px){
+  .topic-list{grid-template-columns:repeat(2,minmax(0,1fr));column-gap:56px}
+  .topic:nth-child(2){border-top:1px solid var(--rule)}
+  .rule + .topic-list > .topic:nth-child(2){border-top:0}
+}
+/* 色は5つ。墨（誌面）・朱（イベント）・藍（お知らせ）・金茶（キャンペーン）・苔（編集者が足した種類）。どれも白い文字で 7 以上 */
+.topic--tone-1{--tp:#2c302a}
+.topic--tone-2{--tp:var(--shu)}
+.topic--tone-3{--tp:var(--indigo)}
+.topic--tone-4{--tp:var(--gold-ink)}
+.topic--tone-5{--tp:#3e5a4c}
+
+.topic__media{aspect-ratio:16/10;container-type:inline-size}
+.topic__media img{width:100%;height:100%;object-fit:cover;transition:transform 1s cubic-bezier(.16,1,.3,1)}
+.topic:hover .topic__media img{transform:scale(1.04)}
+@media (prefers-reduced-motion:reduce){.topic__media img{transition:none}.topic:hover .topic__media img{transform:none}}
+
+/* 写真の無い行の面。上に種類、下に年と月日。数字は枠の幅に合わせて伸び縮みする（cqw ＝ 枠の幅の1%） */
+.topic-plate{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;
+  padding:7cqw 8cqw 6.5cqw;background:var(--tp);color:#fff}
+.topic-plate__kind{font-family:var(--gothic);font-size:clamp(10px,6cqw,13px);line-height:1.4;letter-spacing:var(--tr-meta);
+  overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.topic-plate__date{display:flex;flex-direction:column;line-height:1}
+.topic-plate__y{font-size:clamp(10px,5.6cqw,12.5px);letter-spacing:var(--tr-meta);opacity:.78;margin-bottom:2.5cqw}
+.topic-plate__md{font-size:22cqw;font-weight:500;letter-spacing:.01em;font-variant-numeric:tabular-nums}
+
+/* 題名。リンクは題名にだけ張り、押せる面を行いっぱいに広げる（::after） */
+.topic__title{margin:0;font-family:var(--mincho);font-size:17px;font-weight:600;line-height:1.6;letter-spacing:var(--tr-head)}
+.topic__title a{display:block;color:var(--sumi)}
+.topic__title a::after{content:"";position:absolute;inset:0;z-index:1}
+.topic__t{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.topic:hover .topic__t{color:var(--indigo)}
+.topic__title a:focus-visible{outline:none}
+.topic:has(.topic__title a:focus-visible){outline:2px solid var(--indigo);outline-offset:4px}
+.topic__ext{display:inline-block;margin-left:5px;vertical-align:.02em;color:var(--sumi-faint)}
+
+.topic__meta{display:flex;flex-wrap:wrap;align-items:center;gap:4px 14px;margin:9px 0 0;font-size:12px;line-height:1.6}
+.topic__kind{display:inline-flex;align-items:center;gap:7px;color:var(--sumi-soft);letter-spacing:var(--tr-meta)}
+.topic__kind::before{content:"";width:7px;height:7px;background:var(--tp);flex:none}
+.topic__date{font-family:var(--serif);letter-spacing:var(--tr-meta);color:var(--sumi-faint);font-variant-numeric:tabular-nums}
+.topic__new{font-size:10px;font-weight:700;line-height:18px;letter-spacing:.08em;padding:0 6px;color:#fff;background:var(--shu)}
+
+/* タブレット・スマホは1列。写真は列の4割（タブレットでは240pxまで。広げると写真が主役になり題名が遠のく）、題名は1級下げる */
+@media(max-width:840px){
+  .topic{grid-template-columns:min(40%,240px) minmax(0,1fr);column-gap:14px;padding:16px 0}
+  .rule + .topic-list{margin-top:-16px}
+  .topic__title{font-size:15px;line-height:1.55}
+  .topic__meta{margin-top:6px;font-size:11px;gap:2px 10px}
+  .topic__kind{gap:6px}
+}
+
+/* 一覧（/topics/）・1件のページのリンク先 */
+.topics-main .pagination{margin-top:40px}
+.topic-out{margin:40px 0 0}
