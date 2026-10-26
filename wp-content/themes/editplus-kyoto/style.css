@@ -3,7 +3,7 @@ Theme Name: EditPlus Kyoto Concierge
 Theme URI: https://github.com/takumin-2525/editplus-web-renewal
 Author: 高速オフセット / 株式会社エディットプラス
 Description: 京都・大阪観光コンシェルジュ リニューアル用の自作テーマ。60_デザイン/kyoto-concierge-rough.html のデザインを再現。
-Version: 0.10.0
+Version: 0.10.1
 Requires at least: 6.0
 Requires PHP: 8.0
 Text Domain: editplus-kyoto
@@ -1007,6 +1007,9 @@ html.st-lock,html.st-lock body{overflow:hidden}
    （2026-10-03。BUGS #36）。文節で折る指定（auto-phrase）だけでは折る所が無く、html,body{overflow-x:clip} で右端が切れて見えなかった。
    コース名 .res-title と同じ扱い。折れる所があるあいだは今までどおり */
 .single-title,.shead .ttl{overflow-wrap:anywhere}
+/* 題名の中のカタカナの語（editplus_title_breaks が包む）は、その中では折らない（2026-10-27。スマホで「宇治市源氏物語ミュージ／アム」
+   「ポケモンセンターキョウ／ト」と語の途中で折れていた）。折ってよい所は語の境目の <wbr>。1語が行より長いときだけ途中で折る */
+.ttl-kw{word-break:keep-all;overflow-wrap:anywhere}
 /* hotel: ホテル専用ページのページ内アンカー。
    タブをやめて縦並びにしたので、上から下へ読める順に並べたうえで、
    カウンターの人が /hotel/<slug>/#course に直行できるようにしている */
